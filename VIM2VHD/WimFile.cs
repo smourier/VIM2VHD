@@ -9,11 +9,11 @@ using System.Xml.Linq;
 
 namespace VIM2VHD
 {
-    public class WimFile : IDisposable
+    public sealed class WimFile : IDisposable
     {
         internal IntPtr _handle;
-        internal XDocument _xmlInfo;
-        internal List<WimImage> _imageList;
+        private XDocument _xmlInfo;
+        private List<WimImage> _imageList;
 
         //private static WimMessageCallback _wimMessageCallback;
 

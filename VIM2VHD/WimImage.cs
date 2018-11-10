@@ -8,9 +8,8 @@ using System.Xml.XPath;
 
 namespace VIM2VHD
 {
-    public class WimImage : IDisposable
+    public sealed class WimImage : IDisposable
     {
-        //private WimImageHandle _handle;
         private IntPtr _handle;
         private XDocument _xmlInfo;
         private string _lang;

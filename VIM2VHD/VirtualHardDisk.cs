@@ -15,7 +15,7 @@ namespace VIM2VHD
     /// <summary>
     /// The Virtual Hard Disk class provides methods for creating and manipulating Virtual Hard Disk files.
     /// </summary>
-    public class VirtualHardDisk : IDisposable
+    public sealed class VirtualHardDisk : IDisposable
     {
         private IntPtr _handle;
         private VIRTUAL_STORAGE_TYPE_DEVICE _deviceType = VIRTUAL_STORAGE_TYPE_DEVICE.VIRTUAL_STORAGE_TYPE_DEVICE_UNKNOWN;
@@ -344,7 +344,7 @@ namespace VIM2VHD
         /// <param name="attachVirtualDiskFlags">
         /// A combination of values from the attachVirtualDiskFlags enumeration which will dictate how the behavior of the VHD once mounted.
         /// </param>
-        public void Attach(ATTACH_VIRTUAL_DISK_FLAG attachVirtualDiskFlags)
+        public void Attach(ATTACH_VIRTUAL_DISK_FLAG attachVirtualDiskFlags = ATTACH_VIRTUAL_DISK_FLAG.ATTACH_VIRTUAL_DISK_FLAG_NONE)
         {
             if (IsAttached)
                 return;
@@ -375,14 +375,6 @@ namespace VIM2VHD
         }
 
         /// <summary>
-        /// Attaches a virtual hard disk (VHD) by locating an appropriate VHD provider to accomplish the attachment.
-        /// </summary>
-        /// <remarks>
-        /// This method attaches the VHD with no flags.
-        /// </remarks>
-        public void Attach() => Attach(ATTACH_VIRTUAL_DISK_FLAG.ATTACH_VIRTUAL_DISK_FLAG_NONE);
-
-        /// <summary>
         /// Unsurfaces (detaches) a virtual hard disk (VHD) by locating an appropriate VHD provider to accomplish the operation.
         /// </summary>
         public void Detach()
@@ -407,17 +399,17 @@ namespace VIM2VHD
         }
 
         /// <summary>
-        /// Reduces the size of the virtual hard disk (VHD) backing store file. Supports both sync and async modes.
+        /// Reduces the size of the virtual hard disk (VHD) backing store file.
         /// </summary>
-        /// <param name="overlapped">If not null, the operation runs in async mode</param>
-        public void Compact(IntPtr overlapped) => Compact(overlapped, COMPACT_VIRTUAL_DISK_FLAG.COMPACT_VIRTUAL_DISK_FLAG_NONE);
+        /// <param name="flags">Flags for Compact operation</param>
+        public void Compact(COMPACT_VIRTUAL_DISK_FLAG flags = COMPACT_VIRTUAL_DISK_FLAG.COMPACT_VIRTUAL_DISK_FLAG_NONE) => Compact(IntPtr.Zero, flags);
 
         /// <summary>
         /// Reduces the size of the virtual hard disk (VHD) backing store file. Supports both sync and async modes.
         /// </summary>
         /// <param name="overlapped">If not null, the operation runs in async mode</param>
         /// <param name="flags">Flags for Compact operation</param>
-        public void Compact(IntPtr overlapped, COMPACT_VIRTUAL_DISK_FLAG flags)
+        public void Compact(IntPtr overlapped, COMPACT_VIRTUAL_DISK_FLAG flags = COMPACT_VIRTUAL_DISK_FLAG.COMPACT_VIRTUAL_DISK_FLAG_NONE)
         {
             var compactParams = new COMPACT_VIRTUAL_DISK_PARAMETERS();
             compactParams.Version = COMPACT_VIRTUAL_DISK_VERSION.COMPACT_VIRTUAL_DISK_VERSION_1;
@@ -439,8 +431,8 @@ namespace VIM2VHD
                 if (path == null)
                     return -1;
 
-                var match = Regex.Match(path, @"\d+$"); // look for the last digits in the path
-                return Convert.ToInt32(match.Value, CultureInfo.InvariantCulture);
+                // look for the last digits in the path
+                return int.Parse(Regex.Match(path, @"\d+$").Value);
             }
         }
 
@@ -457,7 +449,7 @@ namespace VIM2VHD
         {
             get
             {
-                int pathSize = 1024;  // Isn't MAX_PATH 255?
+                int pathSize = 1024;
                 var path = new StringBuilder(pathSize);
                 var ret = NativeMethods.GetVirtualDiskPhysicalPath(CheckDisposed(), ref pathSize, path);
                 if (ret == NativeMethods.ERROR_ERROR_DEV_NOT_EXIST)
