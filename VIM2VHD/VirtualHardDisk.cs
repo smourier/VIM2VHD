@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -9,7 +8,6 @@ using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Microsoft.Win32.SafeHandles;
 
 namespace VIM2VHD
 {
@@ -19,66 +17,37 @@ namespace VIM2VHD
     /// </summary>
     public class VirtualHardDisk : IDisposable
     {
-        private SafeFileHandle _virtualHardDiskHandle = null;
-        private string _filePath = null;
-        private bool _disposed;
+        private IntPtr _handle;
         private VirtualStorageDeviceType _deviceType = VirtualStorageDeviceType.Unknown;
 
-        /// <summary>
-        /// Disposal method for Virtual Hard Disk objects.
-        /// </summary>
-        public void Dispose()
+        private VirtualHardDisk(IntPtr handle, string filePath, VirtualStorageDeviceType deviceType)
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Disposal method for Virtual Hard Disk objects.
-        /// </summary>
-        /// <param name="disposing"></param>
-        public void Dispose(bool disposing)
-        {
-            // Check to see if Dispose has already been called.
-            if (!_disposed)
-            {
-                // If disposing equals true, dispose all managed
-                // and unmanaged resources.
-                if (disposing)
-                {
-                    // Dispose managed resources.
-                    if (DiskIndex != 0)
-                    {
-                        Close();
-                    }
-                }
-
-                // Call the appropriate methods to clean up
-                // unmanaged resources here.
-                // If disposing is false,
-                // only the following code is executed.
-
-                // Note disposing has been done.
-                _disposed = true;
-            }
-        }
-
-        private VirtualHardDisk(SafeFileHandle handle, string Path, VirtualStorageDeviceType DeviceType)
-        {
-            if (handle.IsInvalid || handle.IsClosed)
+            if (handle == IntPtr.Zero)
                 throw new ArgumentException("The handle to the Virtual Hard Disk is invalid.", nameof(handle));
 
-            _virtualHardDiskHandle = handle;
-            _filePath = Path;
-            _deviceType = DeviceType;
+            _handle = handle;
+            FilePath = filePath;
+            _deviceType = deviceType;
         }
 
-        /// <summary>
-        /// Destroys a VHD object.
-        /// </summary>
-        ~VirtualHardDisk()
+        public string FilePath { get; }
+
+        private IntPtr CheckDisposed()
         {
-            Dispose(false);
+            var handle = _handle;
+            if (handle == null)
+                throw new ObjectDisposedException("Handle");
+
+            return handle;
+        }
+
+        public void Dispose()
+        {
+            var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+            if (handle != IntPtr.Zero)
+            {
+                NativeMethods.WIMCloseHandle(handle);
+            }
         }
 
         /// <summary>
@@ -89,26 +58,21 @@ namespace VIM2VHD
         /// <param name="size">The maximum size of the disk to create.</param>
         /// <param name="overwrite">Overwrite the VHD if it already exists.</param>
         /// <returns>Virtual Hard Disk object</returns>
-        public static VirtualHardDisk CreateSparseDisk(VirtualStorageDeviceType virtualStorageDeviceType, string path, ulong size, bool overwrite)
-        {
-            return CreateSparseDisk(
+        public static VirtualHardDisk CreateSparseDisk(VirtualStorageDeviceType virtualStorageDeviceType, string path, ulong size, bool overwrite) => CreateSparseDisk(
                 path,
                 size,
                 overwrite,
                 null,
                 IntPtr.Zero,
-                (virtualStorageDeviceType == VirtualStorageDeviceType.VHD)
-                    ? NativeMethods.DEFAULT_BLOCK_SIZE
-                    : 0,
+                virtualStorageDeviceType == VirtualStorageDeviceType.VHD ? NativeMethods.DEFAULT_BLOCK_SIZE : 0,
                 virtualStorageDeviceType,
                 NativeMethods.DISK_SECTOR_SIZE);
-        }
 
         /// <summary>
         /// Creates a new sparse (dynamically expanding) virtual hard disk (.vhd). Supports both sync and async modes.
         /// The VHD image file uses only as much space on the backing store as needed to store the actual data the VHD currently contains. 
         /// </summary>
-        /// <param name="path">The path and name of the VHD to create.</param>
+        /// <param name="filePath">The path and name of the VHD to create.</param>
         /// <param name="size">The size of the VHD to create in bytes.  
         /// When creating this type of VHD, the VHD API does not test for free space on the physical backing store based on the maximum size requested, 
         /// therefore it is possible to successfully create a dynamic VHD with a maximum size larger than the available physical disk free space.
@@ -121,59 +85,30 @@ namespace VIM2VHD
         /// <param name="virtualStorageDeviceType">VHD format version (VHD1 or VHD2)</param>
         /// <param name="sectorSizeInBytes">Sector size for the VHD.</param>
         /// <returns>Returns a SafeFileHandle corresponding to the virtual hard disk that was created.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when an invalid size is specified</exception>
-        /// <exception cref="FileNotFoundException">Thrown when source VHD is not found.</exception>
-        /// <exception cref="SecurityException">Thrown when there was an error while creating the default security descriptor.</exception>
-        /// <exception cref="Win32Exception">Thrown when an error occurred while creating the VHD.</exception>
-        public static VirtualHardDisk
-        CreateSparseDisk(
-            string path,
+        public static VirtualHardDisk CreateSparseDisk(
+            string filePath,
             ulong size,
             bool overwrite,
             string source,
             IntPtr overlapped,
-            uint blockSizeInBytes,
+            int blockSizeInBytes,
             VirtualStorageDeviceType virtualStorageDeviceType,
-            uint sectorSizeInBytes)
+            int sectorSizeInBytes)
         {
-
             // Validate the virtualStorageDeviceType
             if (virtualStorageDeviceType != VirtualStorageDeviceType.VHD && virtualStorageDeviceType != VirtualStorageDeviceType.VHDX)
-            {
-                throw (
-                    new ArgumentOutOfRangeException(
-                        "virtualStorageDeviceType",
-                        virtualStorageDeviceType,
-                        "VirtualStorageDeviceType must be VHD or VHDX."
-                ));
-            }
+                throw new ArgumentOutOfRangeException("virtualStorageDeviceType", virtualStorageDeviceType, "VirtualStorageDeviceType must be VHD or VHDX.");
 
             // Validate size.  It needs to be a multiple of DISK_SECTOR_SIZE (512)...
             if ((size % NativeMethods.DISK_SECTOR_SIZE) != 0)
+                throw new ArgumentOutOfRangeException("size", size, "The size of the virtual disk must be a multiple of 512.");
+
+            if (!string.IsNullOrEmpty(source) && !File.Exists(source))
+                throw new FileNotFoundException("Unable to find the source file.", source);
+
+            if (overwrite && File.Exists(filePath))
             {
-
-                throw (
-                    new ArgumentOutOfRangeException(
-                        "size",
-                        size,
-                        "The size of the virtual disk must be a multiple of 512."
-                ));
-            }
-
-            if ((!String.IsNullOrEmpty(source)) && (!System.IO.File.Exists(source)))
-            {
-
-                throw (
-                    new System.IO.FileNotFoundException(
-                        "Unable to find the source file.",
-                        source
-                ));
-            }
-
-            if ((overwrite) && (System.IO.File.Exists(path)))
-            {
-
-                System.IO.File.Delete(path);
+                File.Delete(filePath);
             }
 
             var createParams = new CreateVirtualDiskParameters();
@@ -191,36 +126,30 @@ namespace VIM2VHD
             createParams.ParentVirtualStorageType = new VirtualStorageType();
             createParams.SourceVirtualStorageType = new VirtualStorageType();
 
-            //
             // Create and init a security descriptor.
             // Since we're creating an essentially blank SD to use with CreateVirtualDisk
             // the VHD will take on the security values from the parent directory.
-            //
-
             if (!NativeMethods.InitializeSecurityDescriptor(out var securityDescriptor, 1))
-                throw (new SecurityException("Unable to initialize the security descriptor for the virtual disk."));
+                throw new SecurityException("Unable to initialize the security descriptor for the virtual disk.");
 
             var virtualStorageType = new VirtualStorageType();
             virtualStorageType.DeviceId = virtualStorageDeviceType;
             virtualStorageType.VendorId = NativeMethods.VirtualStorageTypeVendorMicrosoft;
-
-            SafeFileHandle vhdHandle;
-
-            uint returnCode = NativeMethods.CreateVirtualDisk(
+            int ret = NativeMethods.CreateVirtualDisk(
                     ref virtualStorageType,
-                    path,
+                    filePath,
                     (virtualStorageDeviceType == VirtualStorageDeviceType.VHD) ? VirtualDiskAccessMask.All : VirtualDiskAccessMask.None,
                     ref securityDescriptor,
                     CreateVirtualDiskFlags.None,
                     0,
                     ref createParams,
                     overlapped,
-                    out vhdHandle);
+                    out var handle);
 
-            if (NativeMethods.ERROR_SUCCESS != returnCode && NativeMethods.ERROR_IO_PENDING != returnCode)
-                throw (new Win32Exception((int)returnCode));
+            if (NativeMethods.ERROR_SUCCESS != ret && NativeMethods.ERROR_IO_PENDING != ret)
+                throw new Win32Exception(ret);
 
-            return new VirtualHardDisk(vhdHandle, path, virtualStorageDeviceType);
+            return new VirtualHardDisk(handle, filePath, virtualStorageDeviceType);
         }
 
         /// <summary>
@@ -231,13 +160,7 @@ namespace VIM2VHD
         /// <param name="size">The maximum size of the disk to create.</param>
         /// <param name="overwrite">Overwrite the VHD if it already exists.</param>
         /// <returns>Virtual Hard Disk object</returns>
-        public static VirtualHardDisk CreateFixedDisk(VirtualStorageDeviceType virtualStorageDeviceType,
-            string path,
-            ulong size,
-            bool overwrite)
-        {
-
-            return CreateFixedDisk(
+        public static VirtualHardDisk CreateFixedDisk(VirtualStorageDeviceType virtualStorageDeviceType, string path, ulong size, bool overwrite) => CreateFixedDisk(
                 path,
                 size,
                 overwrite,
@@ -246,13 +169,12 @@ namespace VIM2VHD
                 0,
                 virtualStorageDeviceType,
                 NativeMethods.DISK_SECTOR_SIZE);
-        }
 
         /// <summary>
         /// Creates a fixed-size Virtual Hard Disk. Supports both sync and async modes. This methods always calls the V2 version of the 
         /// CreateVirtualDisk API, and creates VHD2. 
         /// </summary>
-        /// <param name="path">The path and name of the VHD to create.</param>
+        /// <param name="filePath">The path and name of the VHD to create.</param>
         /// <param name="size">The size of the VHD to create in bytes.  
         /// The VHD image file is pre-allocated on the backing store for the maximum size requested.
         /// The maximum size of a dynamic VHD is 2,040 GB.  The minimum size is 3 MB.</param>
@@ -265,68 +187,35 @@ namespace VIM2VHD
         /// <param name="sectorSizeInBytes">Sector size for the VHD.</param>
         /// <returns>Returns a SafeFileHandle corresponding to the virtual hard disk that was created.</returns>
         /// <remarks>Creating a fixed disk can be a time consuming process!</remarks>  
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when an invalid size or wrong virtual storage device type is specified.</exception>
-        /// <exception cref="FileNotFoundException">Thrown when source VHD is not found.</exception>
-        /// <exception cref="SecurityException">Thrown when there was an error while creating the default security descriptor.</exception>
-        /// <exception cref="Win32Exception">Thrown when an error occurred while creating the VHD.</exception>
         public static VirtualHardDisk CreateFixedDisk(
-            string path,
+            string filePath,
             ulong size,
             bool overwrite,
             string source,
             IntPtr overlapped,
-            uint blockSizeInBytes,
+            int blockSizeInBytes,
             VirtualStorageDeviceType virtualStorageDeviceType,
-            uint sectorSizeInBytes)
+            int sectorSizeInBytes)
         {
-
             // Validate the virtualStorageDeviceType
             if (virtualStorageDeviceType != VirtualStorageDeviceType.VHD && virtualStorageDeviceType != VirtualStorageDeviceType.VHDX)
-            {
-
-                throw (
-                    new ArgumentOutOfRangeException(
-                        "virtualStorageDeviceType",
-                        virtualStorageDeviceType,
-                        "VirtualStorageDeviceType must be VHD or VHDX."
-                ));
-            }
+                throw new ArgumentOutOfRangeException("virtualStorageDeviceType", virtualStorageDeviceType, "VirtualStorageDeviceType must be VHD or VHDX.");
 
             // Validate size.  It needs to be a multiple of DISK_SECTOR_SIZE (512)...
             if ((size % NativeMethods.DISK_SECTOR_SIZE) != 0)
+                throw new ArgumentOutOfRangeException("size", size, "The size of the virtual disk must be a multiple of 512.");
+
+            if (!string.IsNullOrEmpty(source) && !File.Exists(source))
+                throw new FileNotFoundException("Unable to find the source file.", source);
+
+            if (overwrite && File.Exists(filePath))
             {
-
-                throw (
-                    new ArgumentOutOfRangeException(
-                        "size",
-                        size,
-                        "The size of the virtual disk must be a multiple of 512."
-                ));
-            }
-
-            if ((!String.IsNullOrEmpty(source)) && (!System.IO.File.Exists(source)))
-            {
-
-                throw (
-                    new System.IO.FileNotFoundException(
-                        "Unable to find the source file.",
-                        source
-                ));
-            }
-
-            if ((overwrite) && (System.IO.File.Exists(path)))
-            {
-
-                System.IO.File.Delete(path);
+                File.Delete(filePath);
             }
 
             var createParams = new CreateVirtualDiskParameters();
-
             // Select the correct version.
-            createParams.Version = (virtualStorageDeviceType == VirtualStorageDeviceType.VHD)
-                ? CreateVirtualDiskVersion.Version1
-                : CreateVirtualDiskVersion.Version2;
-
+            createParams.Version = virtualStorageDeviceType == VirtualStorageDeviceType.VHD ? CreateVirtualDiskVersion.Version1 : CreateVirtualDiskVersion.Version2;
             createParams.UniqueId = Guid.NewGuid();
             createParams.MaximumSize = size;
             createParams.BlockSizeInBytes = blockSizeInBytes;
@@ -338,102 +227,64 @@ namespace VIM2VHD
             createParams.ParentVirtualStorageType = new VirtualStorageType();
             createParams.SourceVirtualStorageType = new VirtualStorageType();
 
-            //
             // Create and init a security descriptor.
             // Since we're creating an essentially blank SD to use with CreateVirtualDisk
             // the VHD will take on the security values from the parent directory.
-            //
-
-            NativeMethods.SecurityDescriptor securityDescriptor;
-            if (!NativeMethods.InitializeSecurityDescriptor(out securityDescriptor, 1))
-            {
-                throw (
-                    new SecurityException(
-                        "Unable to initialize the security descriptor for the virtual disk."
-                ));
-            }
+            if (!NativeMethods.InitializeSecurityDescriptor(out var securityDescriptor, 1))
+                throw new SecurityException("Unable to initialize the security descriptor for the virtual disk.");
 
             var virtualStorageType = new VirtualStorageType();
             virtualStorageType.DeviceId = virtualStorageDeviceType;
             virtualStorageType.VendorId = NativeMethods.VirtualStorageTypeVendorMicrosoft;
 
-            SafeFileHandle vhdHandle;
-
-            uint returnCode = NativeMethods.CreateVirtualDisk(
+            int returnCode = NativeMethods.CreateVirtualDisk(
                 ref virtualStorageType,
-                    path,
-                    (virtualStorageDeviceType == VirtualStorageDeviceType.VHD) ? VirtualDiskAccessMask.All : VirtualDiskAccessMask.None,
+                filePath,
+                virtualStorageDeviceType == VirtualStorageDeviceType.VHD ? VirtualDiskAccessMask.All : VirtualDiskAccessMask.None,
                 ref securityDescriptor,
-                    CreateVirtualDiskFlags.FullPhysicalAllocation,
-                    0,
+                CreateVirtualDiskFlags.FullPhysicalAllocation,
+                0,
                 ref createParams,
-                    overlapped,
-                out vhdHandle);
+                overlapped,
+                out var handle);
 
             if (NativeMethods.ERROR_SUCCESS != returnCode && NativeMethods.ERROR_IO_PENDING != returnCode)
-            {
+                throw new Win32Exception(returnCode);
 
-                throw (
-                    new Win32Exception(
-                        (int)returnCode
-                ));
-            }
-
-            return new VirtualHardDisk(vhdHandle, path, virtualStorageDeviceType);
+            return new VirtualHardDisk(handle, filePath, virtualStorageDeviceType);
         }
 
         /// <summary>
         /// Opens a virtual hard disk (VHD) using the V2 of OpenVirtualDisk Win32 API for use, allowing you to explicitly specify OpenVirtualDiskFlags, 
         /// Read/Write depth, and Access Mask information.
         /// </summary>
-        /// <param name="path">The path and name of the Virtual Hard Disk file to open.</param>
+        /// <param name="filePath">The path and name of the Virtual Hard Disk file to open.</param>
         /// <param name="accessMask">Contains the bit mask for specifying access rights to a virtual hard disk (VHD).  Default is All.</param>
         /// <param name="readWriteDepth">Indicates the number of stores, beginning with the child, of the backing store chain to open as read/write. 
         /// The remaining stores in the differencing chain will be opened read-only. This is necessary for merge operations to succeed.  Default is 0x1.</param>
         /// <param name="flags">An OpenVirtualDiskFlags object to modify the way the Virtual Hard Disk is opened.  Default is Unknown.</param>
         /// <param name="virtualStorageDeviceType">VHD Format Version (VHD1 or VHD2)</param>
         /// <returns>VirtualHardDisk object</returns>
-        /// <exception cref="FileNotFoundException">Thrown if the VHD at path is not found.</exception>
-        /// <exception cref="Win32Exception">Thrown if an error occurred while opening the VHD.</exception>
-        public static VirtualHardDisk Open(string path, VirtualDiskAccessMask accessMask, uint readWriteDepth, OpenVirtualDiskFlags flags, VirtualStorageDeviceType virtualStorageDeviceType)
+        public static VirtualHardDisk Open(string filePath, VirtualDiskAccessMask accessMask, int readWriteDepth, OpenVirtualDiskFlags flags, VirtualStorageDeviceType virtualStorageDeviceType)
         {
-            if (!File.Exists(path))
-            {
-                throw new FileNotFoundException("The specified VHD was not found.  Please check your path and try again.", path);
-            }
+            if (filePath == null)
+                throw new ArgumentNullException(nameof(filePath));
+
+            if (!File.Exists(filePath))
+                throw new FileNotFoundException("The specified VHD was not found.  Please check your path and try again.", filePath);
 
             var openParams = new OpenVirtualDiskParameters();
-
-            // Select the correct version.
-            openParams.Version = (virtualStorageDeviceType == VirtualStorageDeviceType.VHD)
-                ? OpenVirtualDiskVersion.Version1
-                : OpenVirtualDiskVersion.Version2;
-
+            openParams.Version = virtualStorageDeviceType == VirtualStorageDeviceType.VHD ? OpenVirtualDiskVersion.Version1 : OpenVirtualDiskVersion.Version2;
             openParams.GetInfoOnly = false;
 
             var virtualStorageType = new VirtualStorageType();
             virtualStorageType.DeviceId = virtualStorageDeviceType;
+            virtualStorageType.VendorId = virtualStorageDeviceType == VirtualStorageDeviceType.Unknown ? NativeMethods.VirtualStorageTypeVendorUnknown : NativeMethods.VirtualStorageTypeVendorMicrosoft;
+            int ret = NativeMethods.OpenVirtualDisk(ref virtualStorageType, filePath, accessMask, flags, ref openParams, out var handle);
+            if (NativeMethods.ERROR_SUCCESS != ret)
+                throw new Win32Exception(ret);
 
-            virtualStorageType.VendorId = (virtualStorageDeviceType == VirtualStorageDeviceType.Unknown)
-                ? virtualStorageType.VendorId = NativeMethods.VirtualStorageTypeVendorUnknown
-                : virtualStorageType.VendorId = NativeMethods.VirtualStorageTypeVendorMicrosoft;
-
-            SafeFileHandle vhdHandle;
-
-            uint returnCode = NativeMethods.OpenVirtualDisk(
-                ref virtualStorageType,
-                    path,
-                    accessMask,
-                    flags,
-                ref openParams,
-                out vhdHandle);
-
-            if (NativeMethods.ERROR_SUCCESS != returnCode)
-            {
-                throw new Win32Exception((int)returnCode);
-            }
-
-            return new VirtualHardDisk(vhdHandle, path, virtualStorageDeviceType);
+            return new VirtualHardDisk(handle, filePath, virtualStorageDeviceType);
         }
 
         /// <summary>
@@ -448,13 +299,11 @@ namespace VIM2VHD
             {
                 availableDrives.Add((char)i);
             }
-
             foreach (string drive in Environment.GetLogicalDrives())
             {
                 availableDrives.Remove(drive.ToUpper(CultureInfo.InvariantCulture)[0]);
             }
-
-            return new ReadOnlyCollection<char>(availableDrives);
+            return availableDrives;
         }
 
         /// <summary>
@@ -473,8 +322,7 @@ namespace VIM2VHD
         {
             var overlapped = new NativeOverlapped();
             overlapped.EventHandle = NativeMethods.CreateEvent(IntPtr.Zero, true, false, null);
-            var handleForOverllapped = GCHandle.Alloc(overlapped, GCHandleType.Pinned);
-            return handleForOverllapped;
+            return GCHandle.Alloc(overlapped, GCHandleType.Pinned);
         }
 
         /// <summary>
@@ -483,25 +331,7 @@ namespace VIM2VHD
         /// <param name="progress"></param>
         /// <param name="overlapped"></param>
         /// <returns></returns>
-        /// <exception cref="Win32Exception">Thrown when an error occurred while mirroring the VHD.</exception>
-        public uint GetVirtualDiskOperationProgress(ref VirtualDiskProgress progress, IntPtr overlapped)
-        {
-            uint returnCode = NativeMethods.GetVirtualDiskOperationProgress(
-                    this._virtualHardDiskHandle,
-                    overlapped,
-                ref progress);
-
-            return returnCode;
-        }
-
-        /// <summary>
-        /// Closes all open handles to the Virtual Hard Disk object.
-        /// If the VHD is currently attached, and the PermanentLifetime was not specified, this operation will detach it.
-        /// </summary>
-        public void Close()
-        {
-            _virtualHardDiskHandle.Close();
-        }
+        public int GetVirtualDiskOperationProgress(ref VirtualDiskProgress progress, IntPtr overlapped) => NativeMethods.GetVirtualDiskOperationProgress(CheckDisposed(), overlapped, ref progress);
 
         /// <summary>
         /// Attaches a virtual hard disk (VHD) by locating an appropriate VHD provider to accomplish the attachment.
@@ -509,50 +339,33 @@ namespace VIM2VHD
         /// <param name="attachVirtualDiskFlags">
         /// A combination of values from the attachVirtualDiskFlags enumeration which will dictate how the behavior of the VHD once mounted.
         /// </param>
-        /// <exception cref="Win32Exception">Thrown when an error occurred while attaching the VHD.</exception>
-        /// <exception cref="SecurityException">Thrown when an error occurred while creating the default security descriptor.</exception>
         public void Attach(AttachVirtualDiskFlags attachVirtualDiskFlags)
         {
-            if (!this.IsAttached)
+            if (IsAttached)
+                return;
+
+            // Get the current disk index.  We need it later.
+            int diskIndex = DiskIndex;
+            var attachParameters = new AttachVirtualDiskParameters();
+
+            // For attach, the correct version is always Version1 for Win7 and Win8.
+            attachParameters.Version = AttachVirtualDiskVersion.Version1;
+            attachParameters.Reserved = 0;
+
+            if (!NativeMethods.InitializeSecurityDescriptor(out NativeMethods.SecurityDescriptor securityDescriptor, 1))
+                throw new SecurityException("Unable to initialize the security descriptor for the virtual disk.");
+
+            int ret = NativeMethods.AttachVirtualDisk(CheckDisposed(), ref securityDescriptor, attachVirtualDiskFlags, 0, ref attachParameters, IntPtr.Zero);
+            if (ret != NativeMethods.ERROR_SUCCESS)
+                throw new Win32Exception(ret);
+
+            // There's apparently a bit of a timing issue here on some systems.
+            // If the disk index isn't updated, keep checking once per second for five seconds.
+            // If it's not updated after that, it's probably not our fault.
+            var attempts = 5;
+            while (attempts-- >= 0 && diskIndex == DiskIndex)
             {
-                // Get the current disk index.  We need it later.
-                int diskIndex = this.DiskIndex;
-
-                var attachParameters = new AttachVirtualDiskParameters();
-
-                // For attach, the correct version is always Version1 for Win7 and Win8.
-                attachParameters.Version = AttachVirtualDiskVersion.Version1;
-                attachParameters.Reserved = 0;
-
-                if (!NativeMethods.InitializeSecurityDescriptor(out NativeMethods.SecurityDescriptor securityDescriptor, 1))
-                    throw (new SecurityException("Unable to initialize the security descriptor for the virtual disk."));
-
-                uint returnCode = NativeMethods.AttachVirtualDisk(
-                         _virtualHardDiskHandle,
-                    ref securityDescriptor,
-                         attachVirtualDiskFlags,
-                         0,
-                    ref attachParameters,
-                         IntPtr.Zero);
-
-                switch (returnCode)
-                {
-
-                    case NativeMethods.ERROR_SUCCESS:
-                        break;
-
-                    default:
-                        throw new Win32Exception((int)returnCode);
-                }
-
-                // There's apparently a bit of a timing issue here on some systems.
-                // If the disk index isn't updated, keep checking once per second for five seconds.
-                // If it's not updated after that, it's probably not our fault.
-                short attempts = 5;
-                while ((attempts-- >= 0) && (diskIndex == this.DiskIndex))
-                {
-                    System.Threading.Thread.Sleep(1000);
-                }
+                Thread.Sleep(1000);
             }
         }
 
@@ -562,8 +375,6 @@ namespace VIM2VHD
         /// <remarks>
         /// This method attaches the VHD with no flags.
         /// </remarks>
-        /// <exception cref="Win32Exception">Thrown when an error occurred while attaching the VHD.</exception>
-        /// <exception cref="SecurityException">Thrown when an error occurred while creating the default security descriptor.</exception>
         public void Attach() => Attach(AttachVirtualDiskFlags.None);
 
         /// <summary>
@@ -574,7 +385,7 @@ namespace VIM2VHD
             if (!IsAttached)
                 return;
 
-            var ret = NativeMethods.DetachVirtualDisk(_virtualHardDiskHandle, DetachVirtualDiskFlag.None, 0);
+            var ret = NativeMethods.DetachVirtualDisk(CheckDisposed(), DetachVirtualDiskFlag.None, 0);
             switch (ret)
             {
                 case NativeMethods.ERROR_NOT_FOUND:
@@ -605,17 +416,11 @@ namespace VIM2VHD
         {
             var compactParams = new CompactVirtualDiskParameters();
             compactParams.Version = CompactVirtualDiskVersion.Version1;
-            var ret = NativeMethods.CompactVirtualDisk(_virtualHardDiskHandle, flags, ref compactParams, overlapped);
-
-            if ((overlapped == IntPtr.Zero && NativeMethods.ERROR_SUCCESS != ret) ||
-                (overlapped != IntPtr.Zero && NativeMethods.ERROR_IO_PENDING != ret))
+            var ret = NativeMethods.CompactVirtualDisk(CheckDisposed(), flags, ref compactParams, overlapped);
+            if ((overlapped == IntPtr.Zero && ret != NativeMethods.ERROR_SUCCESS) ||
+                (overlapped != IntPtr.Zero && ret != NativeMethods.ERROR_IO_PENDING))
                 throw new Win32Exception(ret);
         }
-
-        /// <summary>
-        /// The SafeFileHandle object for the opened VHD.
-        /// </summary>
-        public SafeFileHandle VirtualHardDiskHandle => _virtualHardDiskHandle;
 
         /// <summary>
         /// Indicates the index of the disk when attached.
@@ -649,7 +454,7 @@ namespace VIM2VHD
             {
                 int pathSize = 1024;  // Isn't MAX_PATH 255?
                 var path = new StringBuilder(pathSize);
-                var ret = NativeMethods.GetVirtualDiskPhysicalPath(_virtualHardDiskHandle, ref pathSize, path);
+                var ret = NativeMethods.GetVirtualDiskPhysicalPath(CheckDisposed(), ref pathSize, path);
                 if (ret == NativeMethods.ERROR_ERROR_DEV_NOT_EXIST)
                     return null;
 

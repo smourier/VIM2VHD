@@ -16,5 +16,5 @@ namespace VIM2VHD
     ///To prevent other subscribers from receiving the message, return WIM_MSG_DONE.
     ///To cancel an image apply or capture, return WIM_MSG_ABORT_IMAGE when handling the WIM_MSG_PROCESS message.
     ///</returns>
-    public delegate uint WimMessageCallback(uint MessageId, IntPtr wParam, IntPtr lParam, IntPtr UserData);
+    public delegate int WimMessageCallback(int MessageId, IntPtr wParam, IntPtr lParam, IntPtr UserData);
 }

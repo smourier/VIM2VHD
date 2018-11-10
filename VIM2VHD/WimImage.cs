@@ -2,32 +2,30 @@
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 using System.Xml.XPath;
 
 namespace VIM2VHD
 {
-    public class WimImage
+    public class WimImage : IDisposable
     {
+        //private WimImageHandle _handle;
+        private IntPtr _handle;
         private XDocument _xmlInfo;
-        private string lang;
+        private string _lang;
 
-        public WimImage(WimFile container, int imageIndex)
+        public WimImage(WimFile file, int imageIndex)
         {
-            if (container == null)
-                throw new ArgumentNullException(nameof(container));
+            if (file == null)
+                throw new ArgumentNullException(nameof(file));
 
-            if (container.Handle.IsClosed || container.Handle.IsInvalid)
-                throw new ArgumentNullException("The handle to the WIM file has already been closed, or is invalid.", nameof(container));
-
-            if (imageIndex > container.ImageCount)
+            if (imageIndex > file.ImagesCount)
                 throw new ArgumentOutOfRangeException(nameof(imageIndex), "The index does not exist in the specified WIM file.");
 
-            Handle = new WimImageHandle(container, imageIndex);
+            _handle = NativeMethods.WIMLoadImage(file._handle, imageIndex);
         }
 
-        public WimImageHandle Handle { get; }
         public string ImageIndex => XmlInfo.Element("IMAGE").Attribute("INDEX").Value;
         public string ImageName => XmlInfo.XPathSelectElement("/IMAGE/NAME").Value;
         public string ImageEditionId => XmlInfo.XPathSelectElement("/IMAGE/WINDOWS/EDITIONID").Value;
@@ -36,7 +34,7 @@ namespace VIM2VHD
         public string ImageInstallationType => XmlInfo.XPathSelectElement("/IMAGE/WINDOWS/INSTALLATIONTYPE").Value;
         public string ImageDescription => XmlInfo.XPathSelectElement("/IMAGE/DESCRIPTION").Value;
         public ulong ImageSize => ulong.Parse(XmlInfo.XPathSelectElement("/IMAGE/TOTALBYTES").Value);
-        public string ImageDefaultLanguage => lang = XmlInfo.XPathSelectElement("/IMAGE/WINDOWS/LANGUAGES/DEFAULT")?.Value;
+        public string ImageDefaultLanguage => _lang = XmlInfo.XPathSelectElement("/IMAGE/WINDOWS/LANGUAGES/DEFAULT")?.Value;
         public string ImageDisplayName => XmlInfo.XPathSelectElement("/IMAGE/DISPLAYNAME").Value;
         public string ImageDisplayDescription => XmlInfo.XPathSelectElement("/IMAGE/DISPLAYDESCRIPTION").Value;
 
@@ -44,9 +42,9 @@ namespace VIM2VHD
         {
             get
             {
-                if (null == _xmlInfo)
+                if (_xmlInfo == null)
                 {
-                    if (!NativeMethods.WimGetImageInformation(Handle, out StringBuilder builder, out uint bytes))
+                    if (!NativeMethods.WIMGetImageInformation(_handle, out var builder, out var bytes))
                         throw new Win32Exception(Marshal.GetLastWin32Error());
 
                     // Ensure the length of the returned bytes to avoid garbage characters at the end.
@@ -108,14 +106,6 @@ namespace VIM2VHD
             }
         }
 
-        public void Close()
-        {
-            if (!Handle.IsClosed && !Handle.IsInvalid)
-            {
-                Handle.Close();
-            }
-        }
-
         public void Apply(string applyToPath)
         {
             if (applyToPath == null)
@@ -125,8 +115,26 @@ namespace VIM2VHD
             if (!Directory.Exists(applyToPath))
                 throw new DirectoryNotFoundException("The WIM cannot be applied because the specified directory was not found.");
 
-            if (!NativeMethods.WimApplyImage(Handle, applyToPath, NativeMethods.WimApplyFlags.WimApplyFlagsNone))
+            if (!NativeMethods.WIMApplyImage(_handle, applyToPath, NativeMethods.WimApplyFlags.WimApplyFlagsNone))
                 throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        private IntPtr CheckDisposed()
+        {
+            var handle = _handle;
+            if (handle == null)
+                throw new ObjectDisposedException("Handle");
+
+            return handle;
+        }
+
+        public void Dispose()
+        {
+            var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+            if (handle != IntPtr.Zero)
+            {
+                NativeMethods.WIMCloseHandle(handle);
+            }
         }
     }
 }

@@ -5,49 +5,17 @@ namespace VIM2VHD
     ///<summary>
     ///Describes the file that is being processed for the ProcessFileEvent.
     ///</summary>
-    public class
-    DefaultImageEventArgs : EventArgs
+    public class DefaultImageEventArgs : EventArgs
     {
-        ///<summary>
-        ///Default constructor.
-        ///</summary>
-        public
-        DefaultImageEventArgs(
-            IntPtr wideParameter,
-            IntPtr leftParameter,
-            IntPtr userData)
+        public DefaultImageEventArgs(IntPtr wParam, IntPtr lParam, IntPtr userData)
         {
-
-            WideParameter = wideParameter;
-            LeftParameter = leftParameter;
+            WParam = wParam;
+            LParam = lParam;
             UserData = userData;
         }
 
-        ///<summary>
-        ///wParam
-        ///</summary>
-        public IntPtr WideParameter
-        {
-            get;
-            private set;
-        }
-
-        ///<summary>
-        ///lParam
-        ///</summary>
-        public IntPtr LeftParameter
-        {
-            get;
-            private set;
-        }
-
-        ///<summary>
-        ///UserData
-        ///</summary>
-        public IntPtr UserData
-        {
-            get;
-            private set;
-        }
+        public IntPtr WParam { get; }
+        public IntPtr LParam { get; }
+        public IntPtr UserData { get; }
     }
 }

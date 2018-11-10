@@ -1,71 +1,81 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace VIM2VHD
 {
-    public class WimFile
+    public class WimFile : IDisposable
     {
+        internal IntPtr _handle;
         internal XDocument _xmlInfo;
         internal List<WimImage> _imageList;
 
-        private static WimMessageCallback wimMessageCallback;
+        //private static WimMessageCallback _wimMessageCallback;
 
         ///<summary>
         ///Enable the caller to prevent a file resource from being compressed during a capture.
         ///</summary>
-        public event ProcessFileEventHandler ProcessFileEvent;
+        public event EventHandler<ProcessFileEventArgs> ProcessFileEvent;
 
         ///<summary>
         ///Indicate an update in the progress of an image application.
         ///</summary>
-        public event DefaultImageEventHandler ProgressEvent;
+        public event EventHandler<DefaultImageEventArgs> ProgressEvent;
 
         ///<summary>
         ///Alert the caller that an error has occurred while capturing or applying an image.
         ///</summary>
-        public event DefaultImageEventHandler ErrorEvent;
+        public event EventHandler<DefaultImageEventArgs> ErrorEvent;
 
         ///<summary>
         ///Indicate that a file has been either captured or applied.
         ///</summary>
-        public event DefaultImageEventHandler StepItEvent;
+        public event EventHandler<DefaultImageEventArgs> StepItEvent;
 
         ///<summary>
         ///Indicate the number of files that will be captured or applied.
         ///</summary>
-        public event DefaultImageEventHandler SetRangeEvent;
+        public event EventHandler<DefaultImageEventArgs> SetRangeEvent;
 
         ///<summary>
         ///Indicate the number of files that have been captured or applied.
         ///</summary>
-        public event DefaultImageEventHandler SetPosEvent;
+        public event EventHandler<DefaultImageEventArgs> SetPosEvent;
 
         /// <summary>
         /// Constructor.
         /// </summary>
-        /// <param name="wimPath">Path to the WIM container.</param>
-        public WimFile(string wimPath)
+        /// <param name="filePath">Path to the WIM container.</param>
+        public WimFile(string filePath)
         {
-            if (wimPath == null)
-                throw new ArgumentNullException(nameof(wimPath));
+            if (filePath == null)
+                throw new ArgumentNullException(nameof(filePath));
 
-            if (!File.Exists(Path.GetFullPath(wimPath)))
-                throw new FileNotFoundException((new FileNotFoundException()).Message, wimPath);
+            _handle = NativeMethods.WIMCreateFile(
+                filePath,
+                NativeMethods.WimCreateFileDesiredAccess.WimGenericRead,
+                NativeMethods.WimCreationDisposition.WimOpenExisting,
+                NativeMethods.WimActionFlags.WimIgnored,
+                NativeMethods.WimCompressionType.WimIgnored,
+                out var creationResult
+            );
+            if (_handle == IntPtr.Zero)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
 
-            Handle = new WimFileHandle(wimPath);
+            if (creationResult != NativeMethods.WimCreationResult.WimOpenedExisting)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+
+            NativeMethods.WIMSetTemporaryPath(_handle, Environment.ExpandEnvironmentVariables("%TEMP%"));
 
             // Hook up the events before we return.
-            //wimMessageCallback = new NativeMethods.WimMessageCallback(ImageEventMessagePump);
-            //NativeMethods.RegisterMessageCallback(this.Handle, wimMessageCallback);
+            //_wimMessageCallback = new WimMessageCallback(ImageEventMessagePump);
+            //NativeMethods.RegisterMessageCallback(_handle, _wimMessageCallback);
         }
-
-        public WimFileHandle Handle { get; }
 
         /// <summary>
         /// Indexer for WIM images inside the WIM container, indexed by the image number.
@@ -82,39 +92,33 @@ namespace VIM2VHD
         /// Some images have their name stored in the Name field, some in the Flags field, and some in the EditionID field.
         /// We take all of those into account in while searching the WIM.
         /// </summary>
-        /// <param name="ImageName"></param>
+        /// <param name="imageName"></param>
         /// <returns></returns>
-        public WimImage this[string ImageName]
+        public WimImage this[string imageName]
         {
             get
             {
-                return Images.Where(i => (
-                        i.ImageName.ToUpper() == ImageName.ToUpper() ||
-                        i.ImageFlags.ToUpper() == ImageName.ToUpper()))
-                        .DefaultIfEmpty(null)
-                        .FirstOrDefault();
+                if (imageName == null)
+                    throw new ArgumentNullException(nameof(imageName));
+
+                return Images.Where(i => i.ImageName.ToUpper() == imageName.ToUpper() || i.ImageFlags.ToUpper() == imageName.ToUpper()).FirstOrDefault();
             }
         }
 
         /// <summary>
-        /// Returns the number of images in the WIM container.
-        /// </summary>
-        internal int ImageCount => NativeMethods.WimGetImageCount(Handle);
-
-        /// <summary>
         /// Returns an XDocument representation of the XML metadata for the WIM container and associated images.
         /// </summary>
-        internal XDocument XmlInfo
+        private XDocument XmlInfo
         {
             get
             {
-                if (null == _xmlInfo)
+                if (_xmlInfo == null)
                 {
-                    if (!NativeMethods.WimGetImageInformation(Handle, out StringBuilder builder, out uint bytes))
+                    if (!NativeMethods.WIMGetImageInformation(CheckDisposed(), out StringBuilder builder, out int bytes))
                         throw new Win32Exception(Marshal.GetLastWin32Error());
 
                     // Ensure the length of the returned bytes to avoid garbage characters at the end.
-                    int charCount = (int)bytes / sizeof(char);
+                    int charCount = bytes / sizeof(char);
                     if (null != builder)
                     {
                         // Get rid of the unicode file marker at the beginning of the XML.
@@ -138,7 +142,7 @@ namespace VIM2VHD
         ///<summary>
         ///Event callback to the Wimgapi events
         ///</summary>
-        private int ImageEventMessagePump(uint MessageId, IntPtr wParam, IntPtr lParam, IntPtr UserData)
+        private int ImageEventMessagePump(int MessageId, IntPtr wParam, IntPtr lParam, IntPtr UserData)
         {
             int status = (int)WimMessage.WIM_MSG_SUCCESS;
             var eventArgs = new DefaultImageEventArgs(wParam, lParam, UserData);
@@ -184,27 +188,36 @@ namespace VIM2VHD
             return status;
         }
 
-        /// <summary>
-        /// Closes the WIM file.
-        /// </summary>
-        public void Close()
+        private IntPtr CheckDisposed()
+        {
+            var handle = _handle;
+            if (handle == null)
+                throw new ObjectDisposedException("Handle");
+
+            return handle;
+        }
+
+        public void Dispose()
         {
             foreach (WimImage image in Images)
             {
-                image.Close();
+                try
+                {
+                    image.Dispose();
+                }
+                catch
+                {
+                }
             }
 
-            if (null != wimMessageCallback)
+            var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+            if (handle != IntPtr.Zero)
             {
-                NativeMethods.UnregisterMessageCallback(this.Handle, wimMessageCallback);
-                wimMessageCallback = null;
-            }
-
-            if (!Handle.IsClosed && !Handle.IsInvalid)
-            {
-                Handle.Close();
+                NativeMethods.WIMCloseHandle(handle);
             }
         }
+
+        public int ImagesCount => NativeMethods.WIMGetImageCount(_handle);
 
         /// <summary>
         /// Provides a list of WimImage objects, representing the images in the WIM container file.
@@ -215,9 +228,9 @@ namespace VIM2VHD
             {
                 if (_imageList == null)
                 {
-                    int imageCount = (int)ImageCount;
-                    _imageList = new List<WimImage>(imageCount);
-                    for (int i = 0; i < imageCount; i++)
+                    int count = ImagesCount;
+                    _imageList = new List<WimImage>(count);
+                    for (int i = 0; i < count; i++)
                     {
                         // Load up each image so it's ready for us.
                         _imageList.Add(new WimImage(this, i + 1));

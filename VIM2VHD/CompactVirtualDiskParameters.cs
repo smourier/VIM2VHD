@@ -6,6 +6,6 @@ namespace VIM2VHD
     public struct CompactVirtualDiskParameters
     {
         public CompactVirtualDiskVersion Version;
-        public uint Reserved;
+        public int Reserved;
     }
 }

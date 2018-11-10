@@ -12,14 +12,17 @@ namespace VIM2VHD
         /// No flags. Use system defaults.
         /// </summary>
         None = 0x00000000,
+
         /// <summary>
         /// Open the VHD file (backing store) without opening any differencing-chain parents. Used to correct broken parent links.
         /// </summary>
         NoParents = 0x00000001,
+        
         /// <summary>
         /// Reserved.
         /// </summary>
         BlankFile = 0x00000002,
+        
         /// <summary>
         /// Reserved.
         /// </summary>

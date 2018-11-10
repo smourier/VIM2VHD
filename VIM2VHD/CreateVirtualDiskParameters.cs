@@ -27,12 +27,12 @@ namespace VIM2VHD
         /// Internal size of the virtual disk object blocks.
         /// The following are predefined block sizes and their behaviors. For a fixed VHD type, this parameter must be zero.
         /// </summary>
-        public uint BlockSizeInBytes;
+        public int BlockSizeInBytes;
 
         /// <summary>
         /// Internal size of the virtual disk object sectors. Must be set to 512.
         /// </summary>
-        public uint SectorSizeInBytes;
+        public int SectorSizeInBytes;
 
         /// <summary>
         /// Optional path to a parent virtual disk object. Associates the new virtual disk with an existing virtual disk.

@@ -12,6 +12,7 @@ namespace VIM2VHD
         /// Contains virtual hard disk (VHD) creation flags.
         /// </summary>
         None = 0x00000000,
+        
         /// <summary>
         /// Pre-allocate all physical space necessary for the size of the virtual disk.
         /// </summary>

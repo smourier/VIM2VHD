@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{0FB3A6A4-376B-49A1-89A8-A33AB8CC7273}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <RootNamespace>VIM2VHD</RootNamespace>
-    <AssemblyName>VIM2VHD</AssemblyName>
+    <ProjectGuid>{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ConvertIsoToVhdx</RootNamespace>
+    <AssemblyName>ConvertIsoToVhdx</AssemblyName>
     <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -22,6 +22,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -32,9 +33,6 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup>
-    <StartupObject />
-  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -43,33 +41,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Architectures.cs" />
-    <Compile Include="AttachVirtualDiskFlags.cs" />
-    <Compile Include="AttachVirtualDiskParameters.cs" />
-    <Compile Include="AttachVirtualDiskVersion.cs" />
-    <Compile Include="CompactVirtualDiskFlags.cs" />
-    <Compile Include="CompactVirtualDiskParameters.cs" />
-    <Compile Include="CompactVirtualDiskVersion.cs" />
-    <Compile Include="CreateVirtualDiskFlags.cs" />
-    <Compile Include="CreateVirtualDiskParameters.cs" />
-    <Compile Include="CreateVirtualDiskVersion.cs" />
-    <Compile Include="DefaultImageEventArgs.cs" />
-    <Compile Include="DetachVirtualDiskFlag.cs" />
-    <Compile Include="NativeMethods.cs" />
-    <Compile Include="OpenVirtualDiskFlags.cs" />
-    <Compile Include="OpenVirtualDiskParameters.cs" />
-    <Compile Include="OpenVirtualDiskVersion.cs" />
-    <Compile Include="ProcessFileEventArgs.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="VirtualDiskAccessMask.cs" />
-    <Compile Include="VirtualDiskProgress.cs" />
-    <Compile Include="VirtualHardDisk.cs" />
-    <Compile Include="VirtualStorageDeviceType.cs" />
-    <Compile Include="VirtualStorageType.cs" />
-    <Compile Include="WimFile.cs" />
-    <Compile Include="WimImage.cs" />
-    <Compile Include="WimMessage.cs" />
-    <Compile Include="WimMessageCallback.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VIM2VHD\VIM2VHD.csproj">
+      <Project>{0fb3a6a4-376b-49a1-89a8-a33ab8cc7273}</Project>
+      <Name>VIM2VHD</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

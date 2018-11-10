@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.28010.2050
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VIM2VHD", "VIM2VHD\VIM2VHD.csproj", "{0FB3A6A4-376B-49A1-89A8-A33AB8CC7273}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConvertIsoToVhdx", "ConvertIsoToVhdx\ConvertIsoToVhdx.csproj", "{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{0FB3A6A4-376B-49A1-89A8-A33AB8CC7273}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0FB3A6A4-376B-49A1-89A8-A33AB8CC7273}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0FB3A6A4-376B-49A1-89A8-A33AB8CC7273}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CB6EAE68-FFAB-4C83-A8EE-D1BE1040B78E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
