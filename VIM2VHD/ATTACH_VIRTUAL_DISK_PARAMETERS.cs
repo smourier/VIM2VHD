@@ -3,9 +3,9 @@
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct AttachVirtualDiskParameters
+    public struct ATTACH_VIRTUAL_DISK_PARAMETERS
     {
-        public AttachVirtualDiskVersion Version;
+        public ATTACH_VIRTUAL_DISK_VERSION Version;
         public int Reserved;
     }
 }

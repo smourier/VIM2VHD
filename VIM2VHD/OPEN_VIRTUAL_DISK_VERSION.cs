@@ -1,0 +1,10 @@
+﻿namespace VIM2VHD
+{
+    public enum OPEN_VIRTUAL_DISK_VERSION
+    {
+        OPEN_VIRTUAL_DISK_VERSION_UNSPECIFIED = 0,
+        OPEN_VIRTUAL_DISK_VERSION_1 = 1,
+        OPEN_VIRTUAL_DISK_VERSION_2 = 2,
+        OPEN_VIRTUAL_DISK_VERSION_3 = 3,
+    }
+}

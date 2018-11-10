@@ -161,45 +161,48 @@ namespace VIM2VHD
             public IntPtr dacl;
         }
 
+        [DllImport("kernel32", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr handle);
+
         [DllImport("virtdisk")]
         public static extern int CreateVirtualDisk(
-            ref VirtualStorageType VirtualStorageType,
+            ref VIRTUAL_STORAGE_TYPE VirtualStorageType,
             [MarshalAs(UnmanagedType.LPWStr)] string Path,
-            VirtualDiskAccessMask VirtualDiskAccessMask,
+            VIRTUAL_DISK_ACCESS_MASK VirtualDiskAccessMask,
             ref SecurityDescriptor SecurityDescriptor,
-            CreateVirtualDiskFlags Flags,
+            CREATE_VIRTUAL_DISK_FLAG Flags,
             int ProviderSpecificFlags,
-            ref CreateVirtualDiskParameters Parameters,
+            ref CREATE_VIRTUAL_DISK_PARAMETERS Parameters,
             IntPtr Overlapped,
             out IntPtr Handle);
 
         [DllImport("virtdisk")]
         public static extern int OpenVirtualDisk(
-            ref VirtualStorageType VirtualStorageType,
+            ref VIRTUAL_STORAGE_TYPE VirtualStorageType,
             [MarshalAs(UnmanagedType.LPWStr)] string Path,
-            VirtualDiskAccessMask VirtualDiskAccessMask,
-            OpenVirtualDiskFlags Flags,
-            ref OpenVirtualDiskParameters Parameters,
+            VIRTUAL_DISK_ACCESS_MASK VirtualDiskAccessMask,
+            OPEN_VIRTUAL_DISK_FLAG Flags,
+            ref OPEN_VIRTUAL_DISK_PARAMETERS Parameters,
             out IntPtr Handle);
 
         // GetVirtualDiskOperationProgress API allows getting progress info for the async virtual disk operations (ie. Online Mirror)
         [DllImport("virtdisk")]
-        public static extern int GetVirtualDiskOperationProgress(IntPtr VirtualDiskHandle, IntPtr Overlapped, ref VirtualDiskProgress Progress);
+        public static extern int GetVirtualDiskOperationProgress(IntPtr VirtualDiskHandle, IntPtr Overlapped, ref VIRTUAL_DISK_PROGRESS Progress);
 
         [DllImport("virtdisk")]
         public static extern int AttachVirtualDisk(
             IntPtr VirtualDiskHandle,
             ref SecurityDescriptor SecurityDescriptor,
-            AttachVirtualDiskFlags Flags,
+            ATTACH_VIRTUAL_DISK_FLAG Flags,
             int ProviderSpecificFlags,
-            ref AttachVirtualDiskParameters Parameters,
+            ref ATTACH_VIRTUAL_DISK_PARAMETERS Parameters,
             IntPtr Overlapped);
 
         [DllImport("virtdisk")]
-        public static extern int DetachVirtualDisk(IntPtr VirtualDiskHandle, DetachVirtualDiskFlag Flags, int ProviderSpecificFlags);
+        public static extern int DetachVirtualDisk(IntPtr VirtualDiskHandle, DETACH_VIRTUAL_DISK_FLAG Flags, int ProviderSpecificFlags);
 
         [DllImport("virtdisk")]
-        public static extern int CompactVirtualDisk(IntPtr VirtualDiskHandle, CompactVirtualDiskFlags Flags, ref CompactVirtualDiskParameters Parameters, IntPtr Overlapped);
+        public static extern int CompactVirtualDisk(IntPtr VirtualDiskHandle, COMPACT_VIRTUAL_DISK_FLAG Flags, ref COMPACT_VIRTUAL_DISK_PARAMETERS Parameters, IntPtr Overlapped);
 
         [DllImport("virtdisk")]
         public static extern int GetVirtualDiskPhysicalPath(IntPtr VirtualDiskHandle, ref int DiskPathSizeInBytes, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder DiskPath);

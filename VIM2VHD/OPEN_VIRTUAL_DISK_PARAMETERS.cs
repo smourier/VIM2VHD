@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct OpenVirtualDiskParameters
+    public struct OPEN_VIRTUAL_DISK_PARAMETERS
     {
-        public OpenVirtualDiskVersion Version;
+        public OPEN_VIRTUAL_DISK_VERSION Version;
         public bool GetInfoOnly;
         public Guid ResiliencyGuid;
     }

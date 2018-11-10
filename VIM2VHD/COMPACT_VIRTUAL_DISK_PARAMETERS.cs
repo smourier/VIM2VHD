@@ -3,9 +3,9 @@
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct CompactVirtualDiskParameters
+    public struct COMPACT_VIRTUAL_DISK_PARAMETERS
     {
-        public CompactVirtualDiskVersion Version;
+        public COMPACT_VIRTUAL_DISK_VERSION Version;
         public int Reserved;
     }
 }

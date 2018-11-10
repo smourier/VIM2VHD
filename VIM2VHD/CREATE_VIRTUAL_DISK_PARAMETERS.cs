@@ -4,12 +4,12 @@ using System.Runtime.InteropServices;
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct CreateVirtualDiskParameters
+    public struct CREATE_VIRTUAL_DISK_PARAMETERS
     {
         /// <summary>
         /// A CREATE_VIRTUAL_DISK_VERSION enumeration that specifies the version of the CREATE_VIRTUAL_DISK_PARAMETERS structure being passed to or from the virtual hard disk (VHD) functions.
         /// </summary>
-        public CreateVirtualDiskVersion Version;
+        public CREATE_VIRTUAL_DISK_VERSION Version;
 
         /// <summary>
         /// Unique identifier to assign to the virtual disk object. If this member is set to zero, a unique identifier is created by the system.
@@ -49,7 +49,7 @@ namespace VIM2VHD
         /// <summary>
         /// Flags for opening the VHD
         /// </summary>
-        public OpenVirtualDiskFlags OpenFlags;
+        public OPEN_VIRTUAL_DISK_FLAG OpenFlags;
 
         /// <summary>
         /// GetInfoOnly flag for V2 handles
@@ -59,12 +59,12 @@ namespace VIM2VHD
         /// <summary>
         /// Virtual Storage Type of the parent disk
         /// </summary>
-        public VirtualStorageType ParentVirtualStorageType;
+        public VIRTUAL_STORAGE_TYPE ParentVirtualStorageType;
 
         /// <summary>
         /// Virtual Storage Type of the source disk
         /// </summary>
-        public VirtualStorageType SourceVirtualStorageType;
+        public VIRTUAL_STORAGE_TYPE SourceVirtualStorageType;
 
         /// <summary>
         /// A GUID to use for fallback resiliency over SMB.

@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct VirtualStorageType
+    public struct VIRTUAL_STORAGE_TYPE
     {
-        public VirtualStorageDeviceType DeviceId;
+        public VIRTUAL_STORAGE_TYPE_DEVICE DeviceId;
         public Guid VendorId;
     }
 }

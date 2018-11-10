@@ -3,7 +3,7 @@
 namespace VIM2VHD
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct VirtualDiskProgress
+    public struct VIRTUAL_DISK_PROGRESS
     {
         public int OperationStatus;
         public ulong CurrentValue;
