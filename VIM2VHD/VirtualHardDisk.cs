@@ -43,6 +43,7 @@ namespace VIM2VHD
 
         public void Dispose()
         {
+            Detach();
             var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
             if (handle != IntPtr.Zero)
             {

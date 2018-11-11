@@ -18,32 +18,32 @@ namespace VIM2VHD
         //private static WimMessageCallback _wimMessageCallback;
 
         ///<summary>
-        ///Enable the caller to prevent a file resource from being compressed during a capture.
+        /// Enable the caller to prevent a file resource from being compressed during a capture.
         ///</summary>
         public event EventHandler<ProcessFileEventArgs> ProcessFileEvent;
 
         ///<summary>
-        ///Indicate an update in the progress of an image application.
+        /// Indicate an update in the progress of an image application.
         ///</summary>
         public event EventHandler<DefaultImageEventArgs> ProgressEvent;
 
         ///<summary>
-        ///Alert the caller that an error has occurred while capturing or applying an image.
+        /// Alert the caller that an error has occurred while capturing or applying an image.
         ///</summary>
         public event EventHandler<DefaultImageEventArgs> ErrorEvent;
 
         ///<summary>
-        ///Indicate that a file has been either captured or applied.
+        /// Indicate that a file has been either captured or applied.
         ///</summary>
         public event EventHandler<DefaultImageEventArgs> StepItEvent;
 
         ///<summary>
-        ///Indicate the number of files that will be captured or applied.
+        /// Indicate the number of files that will be captured or applied.
         ///</summary>
         public event EventHandler<DefaultImageEventArgs> SetRangeEvent;
 
         ///<summary>
-        ///Indicate the number of files that have been captured or applied.
+        /// Indicate the number of files that have been captured or applied.
         ///</summary>
         public event EventHandler<DefaultImageEventArgs> SetPosEvent;
 

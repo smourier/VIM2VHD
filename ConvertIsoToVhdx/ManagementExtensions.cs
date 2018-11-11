@@ -33,9 +33,50 @@ namespace ConvertIsoToVhdx
             return ret;
         }
 
+        public static ManagementObject MountDiskImage(string filePath) => MountDiskImage(filePath, out var driveLetter);
+        public static ManagementObject MountDiskImage(string filePath, out char driveLetter)
+        {
+            if (filePath == null)
+                throw new ArgumentNullException(nameof(filePath));
+
+            var cls = new ManagementClass(@"ROOT\Microsoft\Windows\Storage:MSFT_DiskImage");
+            var mo = cls.CreateInstance();
+            mo["ImagePath"] = filePath;
+            mo["StorageType"] = (uint)1; // ISO
+            mo.Get();
+            var result = mo.InvokeMethod("Mount", new Dictionary<string, object>
+                    {
+                        { "Access", 3 }, // readonly
+                        { "NoDriveLetter", false }
+                    });
+
+            var di = (ManagementBaseObject)result["DiskImage"];
+            driveLetter = GetDiskImageVolumeDriveLetter(di);
+            return mo;
+        }
+
+        public static void UnmountDiskImage(ManagementObject diskImage)
+        {
+            if (diskImage == null)
+                throw new ArgumentNullException(nameof(diskImage));
+
+            diskImage.InvokeMethod("Dismount");
+        }
+
+        public static char GetDiskImageVolumeDriveLetter(ManagementBaseObject diskImage)
+        {
+            if (diskImage == null)
+                throw new ArgumentNullException(nameof(diskImage));
+
+            var imagePath = (string)diskImage["ImagePath"];
+            var storageType = (uint)diskImage["StorageType"];
+            var volume = new ManagementObjectSearcher(@"ROOT\Microsoft\Windows\Storage", "ASSOCIATORS OF {MSFT_DiskImage.ImagePath='" + imagePath + "',StorageType=" + storageType + "} WHERE AssocClass = MSFT_DiskImageToVolume ResultClass = MSFT_Volume").Get().OfType<ManagementObject>().First();
+            return (char)volume["DriveLetter"];
+        }
+
         public static ManagementObject GetDisk(int number) => new ManagementObjectSearcher(@"ROOT\Microsoft\Windows\Storage", "SELECT * FROM MSFT_Disk WHERE Number=" + number).Get().OfType<ManagementObject>().FirstOrDefault();
 
-        public static string GetVolumePath(ManagementBaseObject partition)
+        public static ManagementObject GetPartitionVolume(ManagementBaseObject partition)
         {
             if (partition == null)
                 throw new ArgumentNullException(nameof(partition));
@@ -46,7 +87,7 @@ namespace ConvertIsoToVhdx
                 var part = (string)obj["Partition"];
                 var volume = (string)obj["Volume"];
                 if (part.EndsWith(":" + relPath, StringComparison.OrdinalIgnoreCase))
-                    return volume;
+                    return new ManagementObject(volume);
             }
             return null;
         }
