@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace VIM2VHD
@@ -11,10 +12,15 @@ namespace VIM2VHD
             Path = Marshal.PtrToStringUni(wParam);
             RelativePath = file.GetRelativePath(Path);
             ErrorCode = lParam.ToInt32();
+            if (ErrorCode != 0)
+            {
+                ErrorMessage = new Win32Exception(ErrorCode).Message;
+            }
         }
 
         public string Path { get; }
         public string RelativePath { get; }
         public int ErrorCode { get; }
+        public string ErrorMessage { get; }
     }
 }

@@ -10,6 +10,11 @@ namespace ConvertIsoToVhdx
     class Program
     {
         static string _logFilePath;
+        static int _percentLeft;
+        static int _percentTop;
+        static ManagementObject _iso;
+        static string inputFilePath;
+        static string outputFilePath;
 
         static void Main(string[] args)
         {
@@ -22,8 +27,8 @@ namespace ConvertIsoToVhdx
                 return;
             }
 
-            string inputFilePath = CommandLine.GetNullifiedArgument(0);
-            string outputFilePath = CommandLine.GetNullifiedArgument(1);
+            inputFilePath = CommandLine.GetNullifiedArgument(0);
+            outputFilePath = CommandLine.GetNullifiedArgument(1);
             if (inputFilePath == null || outputFilePath == null)
             {
                 Help();
@@ -36,6 +41,7 @@ namespace ConvertIsoToVhdx
             Console.WriteLine("Output file: " + outputFilePath);
 
             _logFilePath = CommandLine.GetNullifiedArgument("log");
+            int systemPartitionSizeInMB = Math.Max(CommandLine.GetArgument("systemPartitionSizeInMB", 0), 100);
 
             if (_logFilePath != null)
             {
@@ -44,23 +50,43 @@ namespace ConvertIsoToVhdx
                 Console.WriteLine("Logging Imaging information to log file: " + _logFilePath);
             }
 
+            Console.WriteLine();
             Console.CancelKeyPress += OnConsoleCancelKeyPress;
-            var iso = ManagementExtensions.MountDiskImage(inputFilePath, out var driveLetter);
+            _iso = ManagementExtensions.MountDiskImage(inputFilePath, out var driveLetter);
+            Console.WriteLine(inputFilePath + " has been mounted as drive '" + driveLetter + "'.");
             try
             {
                 var input = driveLetter + @":\sources\install.wim";
+                if (!File.Exists(input))
+                {
+                    Console.WriteLine("Error: windows image file at '" + input + "' was not found.");
+                    return;
+                }
+
                 var options = new WimFileOpenOptions();
                 options.RegisterForEvents = true;
+                Console.WriteLine("Opening windows image file '" + input + "'.");
+
                 using (var file = new WimFile(input, options))
                 {
+                    if (file.ImagesCount == 0)
+                    {
+                        Console.WriteLine("Error: windows image file at '" + input + "' does not contain any image.");
+                        return;
+                    }
+
                     file.Event += OnFileEvent;
-                    var output = @"d:\temp\vhdx\test.vhdx";
-                    using (var vdisk = VirtualHardDisk.CreateFixedDisk(VIRTUAL_STORAGE_TYPE_DEVICE.VIRTUAL_STORAGE_TYPE_DEVICE_VHDX, output, 130 * 1024 * 1024L, true))
+                    var diskSize = 512 * (file.Images[0].Size / 512);
+                    Console.WriteLine("Creating virtual disk '" + outputFilePath + "'. Maximum size: " + diskSize + " (" + Conversions.FormatByteSize(diskSize) + ")");
+                    using (var vdisk = VirtualHardDisk.CreateDisk(outputFilePath, diskSize, IntPtr.Zero, true))
                     {
                         vdisk.Attach();
 
                         var disk = ManagementExtensions.GetDisk(vdisk.DiskIndex);
-                        disk.Dump();
+                        Console.WriteLine("Virtual disk path: " + disk["Path"]);
+                        var size = (ulong)disk["Size"];
+                        Console.WriteLine("Virtual disk size: " + size + " bytes (" + Conversions.FormatByteSize(size) + ")");
+                        //disk.Dump();
 
                         var result = disk.InvokeMethod("Initialize", new Dictionary<string, object>
                             {
@@ -69,85 +95,107 @@ namespace ConvertIsoToVhdx
 
                         // reread the disk
                         disk = ManagementExtensions.GetDisk(vdisk.DiskIndex);
-                        disk.Dump();
+                        Console.WriteLine("Virtual disk partition style: " + disk["PartitionStyle"]);
+                        //disk.Dump();
 
-                        var PARTITION_SYSTEM_GUID = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}";
+                        //var PARTITION_SYSTEM_GUID = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}";
 
-                        result = disk.InvokeMethod("CreatePartition", new Dictionary<string, object>
-                            {
-                                { "Size", 100 * 1024 * 1024 },
-                                { "GptType", PARTITION_SYSTEM_GUID }
-                            });
+                        //// https://docs.microsoft.com/en-us/windows-hardware/manufacture/desktop/configure-uefigpt-based-hard-drive-partitions
+                        //result = disk.InvokeMethod("CreatePartition", new Dictionary<string, object>
+                        //    {
+                        //        { "Size", systemPartitionSizeInMB * 1024 * 1024L },
+                        //        { "GptType", PARTITION_SYSTEM_GUID }
+                        //    });
 
-                        var systemPartition = (ManagementBaseObject)result["CreatedPartition"];
-                        systemPartition.Dump();
+                        //var systemPartition = (ManagementBaseObject)result["CreatedPartition"];
+                        //Console.WriteLine("System partition GPT Type: " + systemPartition["GptType"]);
+                        ////systemPartition.Dump();
 
-                        var systemVolume = ManagementExtensions.GetPartitionVolume(systemPartition);
-                        systemVolume.InvokeMethod("Format", new Dictionary<string, object>
-                            {
-                                { "FileSystem", "FAT32" },
-                                { "Force", true },
-                                { "Full", false }
-                            });
+                        //var systemVolume = ManagementExtensions.GetPartitionVolume(systemPartition);
+                        //systemVolume.InvokeMethod("Format", new Dictionary<string, object>
+                        //    {
+                        //        { "FileSystem", "FAT32" },
+                        //        //{ "Force", true },
+                        //        //{ "Full", false },
+                        //        { "Compress", true }
+                        //    });
 
-                        // reread the disk
-                        disk = ManagementExtensions.GetDisk(vdisk.DiskIndex);
-                        disk.Dump();
+                        //// reread the disk
+                        //disk = ManagementExtensions.GetDisk(vdisk.DiskIndex);
+                        ////disk.Dump();
 
                         var PARTITION_BASIC_DATA_GUID = "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}";
 
                         result = disk.InvokeMethod("CreatePartition", new Dictionary<string, object>
                             {
                                 { "UseMaximumSize", true },
+                                //{ "AssignDriveLetter", true },
                                 { "GptType", PARTITION_BASIC_DATA_GUID }
                             });
 
                         var partition = (ManagementBaseObject)result["CreatedPartition"];
-                        Console.WriteLine(" *** PART");
-                        partition.Dump();
+                        //partition.Dump();
+                        Console.WriteLine("Data partition GPT Type: " + partition["GptType"]);
 
                         var volume = ManagementExtensions.GetPartitionVolume(partition);
                         volume.InvokeMethod("Format", new Dictionary<string, object>
                             {
                                 { "FileSystem", "NTFS" },
-                                { "Force", true },
-                                { "Full", false }
+                                { "Compress", true }
+                                //{ "Force", true },
+                                //{ "Full", false }
                             });
 
-                        Console.WriteLine(" *** VOLUME");
-                        volume.Dump();
+                        //volume.Dump();
+                        Console.WriteLine("Data volume path: " + volume["Path"]);
+                        Console.WriteLine("Applying...");
+                        Console.WriteLine();
+                        Console.WriteLine("Completed 00%");
 
+                        int col = 10;
+                        int fixedLines = 1;
+                        _percentLeft = col;
+                        _percentTop = Console.CursorTop - fixedLines;
+
+                        Console.CursorVisible = false;
                         file.Images[0].Apply((string)volume["Path"]);
                     }
                 }
             }
             finally
             {
-                ManagementExtensions.UnmountDiskImage(iso);
+                Console.CursorVisible = true;
+                Console.WriteLine();
+                ManagementExtensions.UnmountDiskImage(_iso);
+                Console.WriteLine(inputFilePath + " has been unmounted.");
             }
         }
 
         private static void OnFileEvent(object sender, WimFileEventArgs e)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            if (e is WimFileProcessEventArgs pe)
+            if (e is WimFileProgressEventArgs pp)
             {
-                Console.WriteLine("Processing path: " + pe.RelativePath);
+                Console.SetCursorPosition(_percentLeft, _percentTop);
+                Console.Write(pp.Percent.ToString("D2") + "%");
             }
-            else if (e is WimFileErrorEventArgs ee)
+            else if ((int)e.Message <= (int)WIM_MSG.WIM_MSG_QUERY_ABORT)
             {
-                Console.WriteLine("Error processing path: " + ee.RelativePath);
-                Console.WriteLine(" Error: " + ee.ErrorCode);
+                //Console.WriteLine("Event " + e.Message + " (0x" + ((int)e.Message).ToString("X4") + ")");
             }
-            else
-            {
-                Console.WriteLine("Event 0x" + ((int)e.Message).ToString("X4"));
-            }
-            Console.ResetColor();
         }
 
         private static void OnConsoleCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
+            Console.WriteLine();
+            Console.WriteLine("Aborting...");
+
+            if (_iso != null)
+            {
+                ManagementExtensions.UnmountDiskImage(_iso);
+                _iso = null;
+                Console.WriteLine(inputFilePath + " has been unmounted.");
+            }
+
             if (_logFilePath != null)
             {
                 WimFile.UnregisterLogfile(_logFilePath);

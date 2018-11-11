@@ -50,6 +50,50 @@ namespace VIM2VHD
             WIM_OPEN_ALWAYS = 4
         }
 
+        public enum COMPACT_VIRTUAL_DISK_VERSION
+        {
+            COMPACT_VIRTUAL_DISK_VERSION_UNSPECIFIED = 0x00000000,
+            COMPACT_VIRTUAL_DISK_VERSION_1 = 0x00000001
+        }
+
+        public enum OPEN_VIRTUAL_DISK_VERSION
+        {
+            OPEN_VIRTUAL_DISK_VERSION_UNSPECIFIED = 0,
+            OPEN_VIRTUAL_DISK_VERSION_1 = 1,
+            OPEN_VIRTUAL_DISK_VERSION_2 = 2,
+            OPEN_VIRTUAL_DISK_VERSION_3 = 3,
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct VIRTUAL_DISK_PROGRESS
+        {
+            public int OperationStatus;
+            public ulong CurrentValue;
+            public ulong CompletionValue;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct VIRTUAL_STORAGE_TYPE
+        {
+            public VIRTUAL_STORAGE_TYPE_DEVICE DeviceId;
+            public Guid VendorId;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct COMPACT_VIRTUAL_DISK_PARAMETERS
+        {
+            public COMPACT_VIRTUAL_DISK_VERSION Version;
+            public int Reserved;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct OPEN_VIRTUAL_DISK_PARAMETERS
+        {
+            public OPEN_VIRTUAL_DISK_VERSION Version;
+            public bool GetInfoOnly;
+            public Guid ResiliencyGuid;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct SECURITY_DESCRIPTOR
         {
@@ -60,6 +104,88 @@ namespace VIM2VHD
             public IntPtr group;
             public IntPtr sacl;
             public IntPtr dacl;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct ATTACH_VIRTUAL_DISK_PARAMETERS
+        {
+            public ATTACH_VIRTUAL_DISK_VERSION Version;
+            public int Reserved;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct CREATE_VIRTUAL_DISK_PARAMETERS_VERSION2
+        {
+            /// <summary>
+            /// A CREATE_VIRTUAL_DISK_VERSION enumeration that specifies the version of the CREATE_VIRTUAL_DISK_PARAMETERS structure being passed to or from the virtual hard disk (VHD) functions.
+            /// </summary>
+            public CREATE_VIRTUAL_DISK_VERSION Version;
+
+            /// <summary>
+            /// Unique identifier to assign to the virtual disk object. If this member is set to zero, a unique identifier is created by the system.
+            /// </summary>
+            public Guid UniqueId;
+
+            /// <summary>
+            /// The maximum virtual size of the virtual disk object. Must be a multiple of 512.
+            /// If a ParentPath is specified, this value must be zero.
+            /// If a SourcePath is specified, this value can be zero to specify the size of the source VHD to be used, otherwise the size specified must be greater than or equal to the size of the source disk.
+            /// </summary>
+            public ulong MaximumSize;
+
+            /// <summary>
+            /// Internal size of the virtual disk object blocks.
+            /// The following are predefined block sizes and their behaviors. For a fixed VHD type, this parameter must be zero.
+            /// </summary>
+            public int BlockSizeInBytes;
+
+            /// <summary>
+            /// Internal size of the virtual disk object sectors. Must be set to 512.
+            /// </summary>
+            public int SectorSizeInBytes;
+
+            public int PhysicalSectorSizeInBytes;
+
+            /// <summary>
+            /// Optional path to a parent virtual disk object. Associates the new virtual disk with an existing virtual disk.
+            /// If this parameter is not NULL, SourcePath must be NULL.
+            /// </summary>
+            public string ParentPath;
+
+            /// <summary>
+            /// Optional path to pre-populate the new virtual disk object with block data from an existing disk. This path may refer to a VHD or a physical disk.
+            /// If this parameter is not NULL, ParentPath must be NULL.
+            /// </summary>
+            public string SourcePath;
+
+            /// <summary>
+            /// Flags for opening the VHD
+            /// </summary>
+            public OPEN_VIRTUAL_DISK_FLAG OpenFlags;
+
+            /// <summary>
+            /// Virtual Storage Type of the parent disk
+            /// </summary>
+            public VIRTUAL_STORAGE_TYPE ParentVirtualStorageType;
+
+            /// <summary>
+            /// Virtual Storage Type of the source disk
+            /// </summary>
+            public VIRTUAL_STORAGE_TYPE SourceVirtualStorageType;
+
+            /// <summary>
+            /// A GUID to use for fallback resiliency over SMB.
+            /// </summary>
+            public Guid ResiliencyGuid;
+        }
+
+        public enum CREATE_VIRTUAL_DISK_VERSION
+        {
+            CREATE_VIRTUAL_DISK_VERSION_UNSPECIFIED = 0,
+            CREATE_VIRTUAL_DISK_VERSION_1 = 1,
+            CREATE_VIRTUAL_DISK_VERSION_2 = 2,
+            //CREATE_VIRTUAL_DISK_VERSION_3 = 3,
+            //CREATE_VIRTUAL_DISK_VERSION_4 = 4,
         }
 
         [DllImport("kernel32", SetLastError = true)]
@@ -73,7 +199,7 @@ namespace VIM2VHD
             ref SECURITY_DESCRIPTOR SecurityDescriptor,
             CREATE_VIRTUAL_DISK_FLAG Flags,
             int ProviderSpecificFlags,
-            ref CREATE_VIRTUAL_DISK_PARAMETERS Parameters,
+            ref CREATE_VIRTUAL_DISK_PARAMETERS_VERSION2 Parameters,
             IntPtr Overlapped,
             out IntPtr Handle);
 

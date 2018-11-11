@@ -114,6 +114,18 @@ namespace VIM2VHD
                             e = new WimFileErrorEventArgs(file, dwMessageId, wParam, lParam);
                             break;
 
+                        case WIM_MSG.WIM_MSG_PROGRESS:
+                            e = new WimFileProgressEventArgs(dwMessageId, wParam, lParam);
+                            break;
+
+                        case WIM_MSG.WIM_MSG_SETPOS:
+                            e = new WimFileSetPosEventArgs(dwMessageId, wParam, lParam);
+                            break;
+
+                        case WIM_MSG.WIM_MSG_SETRANGE:
+                            e = new WimFileSetRangeEventArgs(dwMessageId, wParam, lParam);
+                            break;
+
                         default:
                             e = new WimFileEventArgs(dwMessageId, wParam, lParam);
                             break;

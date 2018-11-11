@@ -1,82 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Globalization;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace ConvertIsoToVhdx
 {
     public static class Conversions
     {
-        private static char[] _enumSeparators = new char[] { ',', ';', '+', '|', ' ' };
+        private readonly static char[] _enumSeparators = new char[] { ',', ';', '+', '|', ' ' };
 
-        public static Type GetEnumeratedType(Type collectionType)
+        public static string FormatByteSize(ulong size)
         {
-            if (collectionType == null)
-                throw new ArgumentNullException(nameof(collectionType));
-
-            foreach (Type type in collectionType.GetInterfaces())
-            {
-                if (!type.IsGenericType)
-                    continue;
-
-                if (type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                    return type.GetGenericArguments()[0];
-
-                if (type.GetGenericTypeDefinition() == typeof(ICollection<>))
-                    return type.GetGenericArguments()[0];
-
-                if (type.GetGenericTypeDefinition() == typeof(IList<>))
-                    return type.GetGenericArguments()[0];
-            }
-            return null;
+            var sb = new StringBuilder(64);
+            StrFormatByteSizeW(size, sb, sb.Capacity);
+            return sb.ToString();
         }
 
-        public static long ToPositiveFileTime(DateTime dt)
-        {
-            var ft = ToFileTimeUtc(dt.ToUniversalTime());
-            return ft < 0 ? 0 : ft;
-        }
-
-        public static long ToPositiveFileTimeUtc(DateTime dt)
-        {
-            var ft = ToFileTimeUtc(dt);
-            return ft < 0 ? 0 : ft;
-        }
-
-        // can return negative numbers
-        public static long ToFileTime(DateTime dt) => ToFileTimeUtc(dt.ToUniversalTime());
-        public static long ToFileTimeUtc(DateTime dt)
-        {
-            const long ticksPerMillisecond = 10000;
-            const long ticksPerSecond = ticksPerMillisecond * 1000;
-            const long ticksPerMinute = ticksPerSecond * 60;
-            const long ticksPerHour = ticksPerMinute * 60;
-            const long ticksPerDay = ticksPerHour * 24;
-            const int daysPerYear = 365;
-            const int daysPer4Years = daysPerYear * 4 + 1;
-            const int daysPer100Years = daysPer4Years * 25 - 1;
-            const int daysPer400Years = daysPer100Years * 4 + 1;
-            const int daysTo1601 = daysPer400Years * 4;
-            const long fileTimeOffset = daysTo1601 * ticksPerDay;
-            long ticks = dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime().Ticks : dt.Ticks;
-            ticks -= fileTimeOffset;
-            return ticks;
-        }
-
-        public static Guid ComputeGuidHash(string text)
-        {
-            if (text == null)
-                return Guid.Empty;
-
-            using (var md5 = MD5.Create())
-            {
-                return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(text)));
-            }
-        }
+        [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+        private static extern long StrFormatByteSizeW(ulong qdw, [MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszBuf, int cchBuf);
 
         public static byte[] ToBytesFromHexa(string text)
         {
@@ -261,25 +203,6 @@ namespace ConvertIsoToVhdx
                 sb.AppendLine();
             }
             return sb.ToString();
-        }
-
-        public static List<T> SplitToList<T>(string text, params char[] separators) => SplitToList<T>(text, null, separators);
-        public static List<T> SplitToList<T>(string text, IFormatProvider provider, params char[] separators)
-        {
-            var al = new List<T>();
-            if (text == null || separators == null || separators.Length == 0)
-                return al;
-
-            foreach (string s in text.Split(separators))
-            {
-                string value = s.Nullify();
-                if (value == null)
-                    continue;
-
-                var item = ChangeType(value, default(T), provider);
-                al.Add(item);
-            }
-            return al;
         }
 
         public static bool EqualsIgnoreCase(this string thisString, string text) => EqualsIgnoreCase(thisString, text, false);
@@ -956,149 +879,6 @@ namespace ConvertIsoToVhdx
                 return defaultValue;
 
             return ChangeType(str, defaultValue, provider);
-        }
-
-        public static bool Compare<TKey, TValue>(this Dictionary<TKey, TValue> dic1, Dictionary<TKey, TValue> dic2) => Compare(dic1, dic2, null);
-        public static bool Compare<TKey, TValue>(this Dictionary<TKey, TValue> dic1, Dictionary<TKey, TValue> dic2, IEqualityComparer<TValue> comparer)
-        {
-            if (dic1 == null)
-                return dic2 == null;
-
-            if (dic2 == null)
-                return false;
-
-            if (dic1.Count != dic2.Count)
-                return false;
-
-            if (comparer == null)
-            {
-                comparer = EqualityComparer<TValue>.Default;
-            }
-
-            foreach (var kv1 in dic1)
-            {
-                if (!dic2.TryGetValue(kv1.Key, out TValue s2) || !comparer.Equals(s2, kv1.Value))
-                    return false;
-            }
-
-            foreach (var kv2 in dic2)
-            {
-                if (!dic1.TryGetValue(kv2.Key, out TValue s1) || !comparer.Equals(s1, kv2.Value))
-                    return false;
-            }
-            return true;
-        }
-
-        public static string ToStringTable<T>(this IEnumerable<T> enumerable) => ToStringTable(enumerable, (Func<T, IEnumerable<PropertyDescriptor>>)null, null, null);
-        public static string ToStringTable<T>(this IEnumerable<T> enumerable, params string[] propertyNames)
-        {
-            if (propertyNames == null || propertyNames == null)
-                return ToStringTable(enumerable);
-
-            return ToStringTable(enumerable, null, (p) => propertyNames.Contains(p.Name), null);
-        }
-
-        public static string ToStringTable<T>(this IEnumerable<T> enumerable, Func<PropertyDescriptor, T, string> toStringFunc, params string[] propertyNames)
-        {
-            if (propertyNames == null || propertyNames == null)
-                return ToStringTable(enumerable);
-
-            return ToStringTable(enumerable, null, (p) => propertyNames.Contains(p.Name), toStringFunc);
-        }
-
-        public static string ToStringTable<T>(this IEnumerable<T> enumerable,
-            Func<T, IEnumerable<PropertyDescriptor>> propertiesFunc,
-            Func<PropertyDescriptor, bool> filterFunc,
-            Func<PropertyDescriptor, T, string> toStringFunc)
-        {
-            if (enumerable == null)
-                throw new ArgumentNullException(nameof(enumerable));
-
-            if (propertiesFunc == null)
-            {
-                propertiesFunc = (o) =>
-                {
-                    return TypeDescriptor.GetProperties(o).OfType<PropertyDescriptor>()
-                    .Where(p => p.Attributes.OfType<BrowsableAttribute>().FirstOrDefault() == null || p.Attributes.OfType<BrowsableAttribute>().First().Browsable);
-                };
-            }
-
-            if (filterFunc == null)
-            {
-                filterFunc = (p) => true;
-            }
-
-            if (toStringFunc == null)
-            {
-                toStringFunc = (p, o) =>
-                {
-                    const int max = 50;
-                    object value = p.GetValue(o);
-                    if (value is string s)
-                        return s;
-
-                    if (value is byte[] bytes)
-                    {
-                        if (bytes.Length > (max - 1) / 2)
-                            return "0x" + BitConverter.ToString(bytes, 0, (max - 1) / 2).Replace("-", string.Empty) + "... (" + bytes.Length + ")";
-
-                        return "0x" + BitConverter.ToString(bytes, 0, Math.Min((max - 1) / 2, bytes.Length)).Replace("-", string.Empty);
-                    }
-
-                    s = string.Format("{0}", value);
-                    return s.Length < max ? s : s.Substring(0, max) + "...";
-                };
-            }
-
-            var first = enumerable.FirstOrDefault();
-            if (first == null)
-                return null;
-
-            var properties = propertiesFunc(first).Where(filterFunc).ToArray();
-            if (properties.Length == 0)
-                return null;
-
-            var columnLengths = properties.Select(p => p.Name.Length).ToArray();
-            var rows = new List<string[]>();
-            foreach (var row in enumerable)
-            {
-                string[] rowValues = new string[properties.Length];
-                for (int i = 0; i < properties.Length; i++)
-                {
-                    rowValues[i] = toStringFunc(properties[i], row);
-                    if (rowValues[i].Length > columnLengths[i])
-                    {
-                        columnLengths[i] = rowValues[i].Length;
-                    }
-                }
-                rows.Add(rowValues);
-            }
-
-            string fullLine = new string('-', columnLengths.Sum() + 1 + columnLengths.Length * (2 + 1));
-            var gridLine = new StringBuilder();
-            var sb = new StringBuilder(fullLine);
-            sb.AppendLine();
-            sb.Append('|');
-            gridLine.Append('|');
-            for (int i = 0; i < properties.Length; i++)
-            {
-                sb.AppendFormat(" {0," + columnLengths[i] + "} |", properties[i].Name);
-                gridLine.Append(new string('-', columnLengths[i] + 2) + '|');
-            }
-            sb.AppendLine();
-            sb.AppendLine(gridLine.ToString());
-            for (int r = 0; r < rows.Count; r++)
-            {
-                string[] rowValues = rows[r];
-                sb.Append('|');
-                for (int i = 0; i < properties.Length; i++)
-                {
-                    sb.AppendFormat(" {0," + columnLengths[i] + "} |", rowValues[i]);
-                }
-                sb.AppendLine();
-            }
-            sb.Append(fullLine);
-            return sb.ToString();
         }
     }
 }
