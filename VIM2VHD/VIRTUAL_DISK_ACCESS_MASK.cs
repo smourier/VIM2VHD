@@ -67,9 +67,9 @@ namespace VIM2VHD
         /// Allows unrestricted access to the virtual disk. The caller must have unrestricted access rights to the virtual disk image file.
         /// </summary>
         VIRTUAL_DISK_ACCESS_ALL = 0x003F0000,
-        
+
         /// <summary>
-        /// Reserved.
+        /// A special flag to be used to test if the virtual disk needs to be opened for write.
         /// </summary>
         VIRTUAL_DISK_ACCESS_WRITABLE = 0x00320000
     }

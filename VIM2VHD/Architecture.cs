@@ -1,6 +1,6 @@
 ﻿namespace VIM2VHD
 {
-    public enum Architectures
+    public enum Architecture
     {
         Invalid = -1,
         x86 = 0x0,

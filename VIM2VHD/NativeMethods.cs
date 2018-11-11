@@ -1,30 +1,14 @@
 ﻿using System;
-using System.ComponentModel;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 
 namespace VIM2VHD
 {
-    /// <summary>
-    /// P/Invoke methods and associated enums, flags, and structs.
-    /// </summary>
     internal class NativeMethods
     {
-        public static void RegisterMessageCallback(IntPtr hWim, WimMessageCallback callback)
-        {
-            WIMRegisterMessageCallback(hWim, callback, IntPtr.Zero);
-            int gle = Marshal.GetLastWin32Error();
-            if (gle != 0)
-                throw new InvalidOperationException(string.Format(CultureInfo.CurrentCulture, "Unable to register message callback."), new Win32Exception(gle));
-        }
+        public delegate WIM_MSG_RETURN WIMMessageCallback(WIM_MSG dwMessageId, IntPtr wParam, IntPtr lParam, IntPtr pvUserData);
 
-        public static void UnregisterMessageCallback(IntPtr hWim, WimMessageCallback registeredCallback)
-        {
-            if (!WIMUnregisterMessageCallback(hWim, registeredCallback))
-                throw new InvalidOperationException(string.Format(CultureInfo.CurrentCulture, "Unable to unregister message callback."), new Win32Exception(Marshal.GetLastWin32Error()));
-        }
+        public const int WM_APP = 0x00008000;
 
         /// <summary>
         /// The default depth in a VHD parent chain that this library will search through.
@@ -38,119 +22,36 @@ namespace VIM2VHD
         public const int ERROR_VIRTDISK_NOT_VIRTUAL_DISK = unchecked((int)0xC03A0015);
         public const int ERROR_NOT_FOUND = 0x00000490;
         public const int ERROR_IO_PENDING = 0x000003E5;
-        public const int ERROR_INSUFFICIENT_BUFFER = 0x0000007A;
         public const int ERROR_ERROR_DEV_NOT_EXIST = 0x00000037;
-        public const int ERROR_BAD_COMMAND = 0x00000016;
         public const int ERROR_SUCCESS = 0x00000000;
 
         public static Guid VirtualStorageTypeVendorUnknown = new Guid("00000000-0000-0000-0000-000000000000");
         public static Guid VirtualStorageTypeVendorMicrosoft = new Guid("EC984AEC-A0F9-47e9-901F-71415A66345B");
 
-        public const int WIM_FLAG_VERIFY = 0x00000002;
-        public const int WIM_FLAG_INDEX = 0x00000004;
+        public enum WIM_CREATION_RESULT
+        {
+            WIM_CREATED_NEW = 0,
+            WIM_OPENED_EXISTING
+        }
 
         [Flags]
-        public enum WimCreateFileDesiredAccess
+        public enum WIM_ACCESS
         {
-            WimQuery = 0x00000000,
-            WimGenericRead = unchecked((int)0x80000000)
+            WIM_GENERIC_READ = unchecked((int)0x80000000),
+            WIM_GENERIC_WRITE = 0x40000000,
+            WIM_GENERIC_MOUNT = 0x20000000,
         }
 
-        /// <summary>
-        /// Specifies how the file is to be treated and what features are to be used.
-        /// </summary>
-        [Flags]
-        public enum WimApplyFlags
+        public enum WIM_CREATION_DISPOSITION
         {
-            /// <summary>
-            /// No flags.
-            /// </summary>
-            WimApplyFlagsNone = 0x00000000,
-
-            /// <summary>
-            /// Reserved.
-            /// </summary>
-            WimApplyFlagsReserved = 0x00000001,
-            
-            /// <summary>
-            /// Verifies that files match original data.
-            /// </summary>
-            WimApplyFlagsVerify = 0x00000002,
-            
-            /// <summary>
-            /// Specifies that the image is to be sequentially read for caching or performance purposes.
-            /// </summary>
-            WimApplyFlagsIndex = 0x00000004,
-            
-            /// <summary>
-            /// Applies the image without physically creating directories or files. Useful for obtaining a list of files and directories in the image.
-            /// </summary>
-            WimApplyFlagsNoApply = 0x00000008,
-            
-            /// <summary>
-            /// Disables restoring security information for directories.
-            /// </summary>
-            WimApplyFlagsNoDirAcl = 0x00000010,
-            
-            /// <summary>
-            /// Disables restoring security information for files
-            /// </summary>
-            WimApplyFlagsNoFileAcl = 0x00000020,
-            
-            /// <summary>
-            /// The .wim file is opened in a mode that enables simultaneous reading and writing.
-            /// </summary>
-            WimApplyFlagsShareWrite = 0x00000040,
-            
-            /// <summary>
-            /// Sends a WIM_MSG_FILEINFO message during the apply operation.
-            /// </summary>
-            WimApplyFlagsFileInfo = 0x00000080,
-            
-            /// <summary>
-            /// Disables automatic path fixups for junctions and symbolic links.
-            /// </summary>
-            WimApplyFlagsNoRpFix = 0x00000100,
-            
-            /// <summary>
-            /// Returns a handle that cannot commit changes, regardless of the access level requested at mount time.
-            /// </summary>
-            WimApplyFlagsMountReadOnly = 0x00000200,
-            
-            /// <summary>
-            /// Reserved.
-            /// </summary>
-            WimApplyFlagsMountFast = 0x00000400,
-            
-            /// <summary>
-            /// Reserved.
-            /// </summary>
-            WimApplyFlagsMountLegacy = 0x00000800
-        }
-
-        public enum WimCreationDisposition
-        {
-            WimOpenExisting = 0x00000003,
-        }
-
-        public enum WimActionFlags
-        {
-            WimIgnored = 0x00000000
-        }
-
-        public enum WimCompressionType
-        {
-            WimIgnored = 0x00000000
-        }
-
-        public enum WimCreationResult
-        {
-            WimCreatedNew = 0x00000000,
-            WimOpenedExisting = 0x00000001
+            WIM_CREATE_NEW = 1,
+            WIM_CREATE_ALWAYS = 2,
+            WIM_OPEN_EXISTING = 3,
+            WIM_OPEN_ALWAYS = 4
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct SecurityDescriptor
+        public struct SECURITY_DESCRIPTOR
         {
             public byte revision;
             public byte size;
@@ -169,7 +70,7 @@ namespace VIM2VHD
             ref VIRTUAL_STORAGE_TYPE VirtualStorageType,
             [MarshalAs(UnmanagedType.LPWStr)] string Path,
             VIRTUAL_DISK_ACCESS_MASK VirtualDiskAccessMask,
-            ref SecurityDescriptor SecurityDescriptor,
+            ref SECURITY_DESCRIPTOR SecurityDescriptor,
             CREATE_VIRTUAL_DISK_FLAG Flags,
             int ProviderSpecificFlags,
             ref CREATE_VIRTUAL_DISK_PARAMETERS Parameters,
@@ -192,7 +93,7 @@ namespace VIM2VHD
         [DllImport("virtdisk")]
         public static extern int AttachVirtualDisk(
             IntPtr VirtualDiskHandle,
-            ref SecurityDescriptor SecurityDescriptor,
+            ref SECURITY_DESCRIPTOR SecurityDescriptor,
             ATTACH_VIRTUAL_DISK_FLAG Flags,
             int ProviderSpecificFlags,
             ref ATTACH_VIRTUAL_DISK_PARAMETERS Parameters,
@@ -208,7 +109,7 @@ namespace VIM2VHD
         public static extern int GetVirtualDiskPhysicalPath(IntPtr VirtualDiskHandle, ref int DiskPathSizeInBytes, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder DiskPath);
 
         [DllImport("advapi32", SetLastError = true)]
-        public static extern bool InitializeSecurityDescriptor(out SecurityDescriptor pSecurityDescriptor, int dwRevision);
+        public static extern bool InitializeSecurityDescriptor(out SECURITY_DESCRIPTOR pSecurityDescriptor, int dwRevision);
 
         // CreateEvent API is used while calling async Online Mirror API
         [DllImport("kernel32")]
@@ -216,39 +117,45 @@ namespace VIM2VHD
 
         [DllImport("wimgapi", SetLastError = true)]
         public static extern IntPtr WIMCreateFile(
-            [MarshalAs(UnmanagedType.LPWStr)] string WimPath,
-            WimCreateFileDesiredAccess DesiredAccess,
-            WimCreationDisposition CreationDisposition,
-            WimActionFlags FlagsAndAttributes,
-            WimCompressionType CompressionType,
-            out WimCreationResult CreationResult
+            [MarshalAs(UnmanagedType.LPWStr)] string pszWimPath,
+            WIM_ACCESS dwDesiredAccess,
+            WIM_CREATION_DISPOSITION dwCreationDisposition,
+            WIM_FLAG dwFlagsAndAttributes,
+            WIM_COMPRESSION_TYPE dwCompressionType,
+            out WIM_CREATION_RESULT pdwCreationResult
         );
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern bool WIMCloseHandle(IntPtr Handle);
+        public static extern bool WIMCloseHandle(IntPtr hObject);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern IntPtr WIMLoadImage(IntPtr Handle, int ImageIndex);
+        public static extern IntPtr WIMLoadImage(IntPtr hWim, int dwImageIndex);
 
         [DllImport("wimgapi")]
-        public static extern int WIMGetImageCount(IntPtr Handle);
-
-        //[DllImport("wimgapi", SetLastError = true)]
-        //public static extern bool WIMApplyImage(WimImageHandle Handle, [MarshalAs(UnmanagedType.LPWStr)] string Path, WimApplyFlags Flags);
+        public static extern int WIMGetImageCount(IntPtr hWim);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern bool WIMApplyImage(IntPtr Handle, [MarshalAs(UnmanagedType.LPWStr)] string Path, WimApplyFlags Flags);
+        public static extern bool WIMApplyImage(IntPtr hImage, [MarshalAs(UnmanagedType.LPWStr)] string pszPath, WIM_FLAG dwApplyFlags);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern bool WIMGetImageInformation(IntPtr Handle, [MarshalAs(UnmanagedType.LPWStr)] out StringBuilder ImageInfo, out int SizeOfImageInfo);
+        public static extern bool WIMGetImageInformation(IntPtr hImage, [MarshalAs(UnmanagedType.LPWStr)] out StringBuilder ppvImageInfo, out int pcbImageInfo);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern bool WIMSetTemporaryPath(IntPtr Handle, [MarshalAs(UnmanagedType.LPWStr)] string TempPath);
+        public static extern bool WIMSetTemporaryPath(IntPtr hWim, [MarshalAs(UnmanagedType.LPWStr)] string pszPath);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern int WIMRegisterMessageCallback(IntPtr Handle, WimMessageCallback MessageProc, IntPtr ImageInfo);
+        public static extern int WIMRegisterMessageCallback(IntPtr hWim, WIMMessageCallback fpMessageProc, IntPtr pvUserData);
 
         [DllImport("wimgapi", SetLastError = true)]
-        public static extern bool WIMUnregisterMessageCallback(IntPtr Handle, WimMessageCallback MessageProc);
+        public static extern bool WIMUnregisterMessageCallback(IntPtr hWim, WIMMessageCallback fpMessageProc);
+
+        [DllImport("wimgapi", SetLastError = true)]
+        public static extern bool WIMRegisterLogFile([MarshalAs(UnmanagedType.LPWStr)] string pszLogFile, int dwFlags);
+
+        [DllImport("wimgapi", SetLastError = true)]
+        public static extern bool WIMUnregisterLogFile([MarshalAs(UnmanagedType.LPWStr)] string pszLogFile);
+
+        [DllImport("wimgapi", SetLastError = true)]
+        public static extern bool WIMExtractImagePath(IntPtr hImage, [MarshalAs(UnmanagedType.LPWStr)] string pszImagePath, [MarshalAs(UnmanagedType.LPWStr)] string pszDestinationPath, WIM_FLAG dwExtractFlags);
     }
 }

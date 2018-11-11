@@ -358,7 +358,7 @@ namespace VIM2VHD
             attachParameters.Version = ATTACH_VIRTUAL_DISK_VERSION.ATTACH_VIRTUAL_DISK_VERSION_1;
             attachParameters.Reserved = 0;
 
-            if (!NativeMethods.InitializeSecurityDescriptor(out NativeMethods.SecurityDescriptor securityDescriptor, 1))
+            if (!NativeMethods.InitializeSecurityDescriptor(out NativeMethods.SECURITY_DESCRIPTOR securityDescriptor, 1))
                 throw new SecurityException("Unable to initialize the security descriptor for the virtual disk.");
 
             int ret = NativeMethods.AttachVirtualDisk(CheckDisposed(), ref securityDescriptor, attachVirtualDiskFlags, 0, ref attachParameters, IntPtr.Zero);

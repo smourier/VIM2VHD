@@ -1,23 +1,61 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Management;
+using System.Reflection;
 using VIM2VHD;
 
 namespace ConvertIsoToVhdx
 {
     class Program
     {
+        static string _logFilePath;
+
         static void Main(string[] args)
         {
-            string path = @"win8.iso";
-            var iso = ManagementExtensions.MountDiskImage(path, out var driveLetter);
+            Console.WriteLine("ConvertIsoToVhdx - Copyright (C) 2017-" + DateTime.Now.Year + " Simon Mourier. All rights reserved.");
+            Console.WriteLine();
+
+            if (CommandLine.HelpRequested || args.Length < 2)
+            {
+                Help();
+                return;
+            }
+
+            string inputFilePath = CommandLine.GetNullifiedArgument(0);
+            string outputFilePath = CommandLine.GetNullifiedArgument(1);
+            if (inputFilePath == null || outputFilePath == null)
+            {
+                Help();
+                return;
+            }
+
+            inputFilePath = Path.GetFullPath(inputFilePath);
+            outputFilePath = Path.GetFullPath(outputFilePath);
+            Console.WriteLine("Input file: " + inputFilePath);
+            Console.WriteLine("Output file: " + outputFilePath);
+
+            _logFilePath = CommandLine.GetNullifiedArgument("log");
+
+            if (_logFilePath != null)
+            {
+                _logFilePath = Path.GetFullPath(_logFilePath);
+                WimFile.RegisterLogfile(_logFilePath);
+                Console.WriteLine("Logging Imaging information to log file: " + _logFilePath);
+            }
+
+            Console.CancelKeyPress += OnConsoleCancelKeyPress;
+            var iso = ManagementExtensions.MountDiskImage(inputFilePath, out var driveLetter);
             try
             {
                 var input = driveLetter + @":\sources\install.wim";
-                using (var file = new WimFile(input))
+                var options = new WimFileOpenOptions();
+                options.RegisterForEvents = true;
+                using (var file = new WimFile(input, options))
                 {
+                    file.Event += OnFileEvent;
                     var output = @"d:\temp\vhdx\test.vhdx";
-                    using (var vdisk = VirtualHardDisk.CreateFixedDisk(VIRTUAL_STORAGE_TYPE_DEVICE.VIRTUAL_STORAGE_TYPE_DEVICE_VHDX, output, 3000 * 1024 * 1024L, true))
+                    using (var vdisk = VirtualHardDisk.CreateFixedDisk(VIRTUAL_STORAGE_TYPE_DEVICE.VIRTUAL_STORAGE_TYPE_DEVICE_VHDX, output, 130 * 1024 * 1024L, true))
                     {
                         vdisk.Attach();
 
@@ -87,6 +125,49 @@ namespace ConvertIsoToVhdx
             {
                 ManagementExtensions.UnmountDiskImage(iso);
             }
+        }
+
+        private static void OnFileEvent(object sender, WimFileEventArgs e)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            if (e is WimFileProcessEventArgs pe)
+            {
+                Console.WriteLine("Processing path: " + pe.RelativePath);
+            }
+            else if (e is WimFileErrorEventArgs ee)
+            {
+                Console.WriteLine("Error processing path: " + ee.RelativePath);
+                Console.WriteLine(" Error: " + ee.ErrorCode);
+            }
+            else
+            {
+                Console.WriteLine("Event 0x" + ((int)e.Message).ToString("X4"));
+            }
+            Console.ResetColor();
+        }
+
+        private static void OnConsoleCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            if (_logFilePath != null)
+            {
+                WimFile.UnregisterLogfile(_logFilePath);
+            }
+        }
+
+        static void Help()
+        {
+            Console.WriteLine(Assembly.GetEntryAssembly().GetName().Name.ToUpperInvariant() + " <input file path> <output file path> [Options]");
+            Console.WriteLine();
+            Console.WriteLine("Description:");
+            Console.WriteLine("    This tool is used to convert Windows installation .ISO files to bootable VHDX files.");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("    /log:<logfilepath>   Defines a log file path for Imaging operations.");
+            Console.WriteLine();
+            Console.WriteLine("Example:");
+            Console.WriteLine();
+            Console.WriteLine("    " + Assembly.GetEntryAssembly().GetName().Name.ToUpperInvariant() + " c:\\mypath\\myproject\\win8.iso c:\\mypath\\myproject\\win8.vhdx");
+            Console.WriteLine();
         }
     }
 }

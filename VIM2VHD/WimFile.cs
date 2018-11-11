@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,70 +14,131 @@ namespace VIM2VHD
 {
     public sealed class WimFile : IDisposable
     {
-        internal IntPtr _handle;
-        private XDocument _xmlInfo;
+        private readonly static ConcurrentDictionary<IntPtr, WimFile> _sinks = new ConcurrentDictionary<IntPtr, WimFile>();
+        private readonly static NativeMethods.WIMMessageCallback _messageCallback = MessageCallback;
+        private IntPtr _handle;
         private List<WimImage> _imageList;
-
-        //private static WimMessageCallback _wimMessageCallback;
-
-        ///<summary>
-        /// Enable the caller to prevent a file resource from being compressed during a capture.
-        ///</summary>
-        public event EventHandler<ProcessFileEventArgs> ProcessFileEvent;
-
-        ///<summary>
-        /// Indicate an update in the progress of an image application.
-        ///</summary>
-        public event EventHandler<DefaultImageEventArgs> ProgressEvent;
-
-        ///<summary>
-        /// Alert the caller that an error has occurred while capturing or applying an image.
-        ///</summary>
-        public event EventHandler<DefaultImageEventArgs> ErrorEvent;
-
-        ///<summary>
-        /// Indicate that a file has been either captured or applied.
-        ///</summary>
-        public event EventHandler<DefaultImageEventArgs> StepItEvent;
-
-        ///<summary>
-        /// Indicate the number of files that will be captured or applied.
-        ///</summary>
-        public event EventHandler<DefaultImageEventArgs> SetRangeEvent;
-
-        ///<summary>
-        /// Indicate the number of files that have been captured or applied.
-        ///</summary>
-        public event EventHandler<DefaultImageEventArgs> SetPosEvent;
+        public event EventHandler<WimFileEventArgs> Event;
 
         /// <summary>
         /// Constructor.
         /// </summary>
         /// <param name="filePath">Path to the WIM container.</param>
-        public WimFile(string filePath)
+        public WimFile(string filePath, WimFileOpenOptions options = null)
         {
             if (filePath == null)
                 throw new ArgumentNullException(nameof(filePath));
 
+            options = options ?? new WimFileOpenOptions();
             _handle = NativeMethods.WIMCreateFile(
                 filePath,
-                NativeMethods.WimCreateFileDesiredAccess.WimGenericRead,
-                NativeMethods.WimCreationDisposition.WimOpenExisting,
-                NativeMethods.WimActionFlags.WimIgnored,
-                NativeMethods.WimCompressionType.WimIgnored,
+                NativeMethods.WIM_ACCESS.WIM_GENERIC_READ,
+                NativeMethods.WIM_CREATION_DISPOSITION.WIM_OPEN_EXISTING,
+                options.Flags,
+                options.CompressionType,
                 out var creationResult
             );
             if (_handle == IntPtr.Zero)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
 
-            if (creationResult != NativeMethods.WimCreationResult.WimOpenedExisting)
+            if (creationResult != NativeMethods.WIM_CREATION_RESULT.WIM_OPENED_EXISTING)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
 
-            NativeMethods.WIMSetTemporaryPath(_handle, Environment.ExpandEnvironmentVariables("%TEMP%"));
+            if (!NativeMethods.WIMGetImageInformation(CheckDisposed(), out StringBuilder builder, out int bytes))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
 
-            // Hook up the events before we return.
-            //_wimMessageCallback = new WimMessageCallback(ImageEventMessagePump);
-            //NativeMethods.RegisterMessageCallback(_handle, _wimMessageCallback);
+            // Ensure the length of the returned bytes to avoid garbage characters at the end.
+            int count = bytes / sizeof(char);
+            if (builder != null)
+            {
+                // Get rid of the unicode file marker at the beginning of the XML.
+                builder.Remove(0, 1);
+                builder.EnsureCapacity(count - 1);
+                builder.Length = count - 1;
+
+                var xml = XDocument.Parse(builder.ToString().Trim());
+                Size = ulong.Parse(xml.Root?.Element("TOTALBYTES")?.Value ?? "0");
+            }
+
+            if (string.IsNullOrWhiteSpace(options.TempDirectoryPath))
+            {
+                options.TempDirectoryPath = Environment.ExpandEnvironmentVariables("%TEMP%");
+            }
+            else
+            {
+                // ensure it exists
+                Extensions.FileCreateDirectory(Path.Combine(options.TempDirectoryPath, "dummy"));
+            }
+
+            NativeMethods.WIMSetTemporaryPath(_handle, options.TempDirectoryPath);
+
+            if (options.RegisterForEvents)
+            {
+                _sinks.AddOrUpdate(_handle, this, (k, old) => this);
+                NativeMethods.WIMRegisterMessageCallback(_handle, _messageCallback, _handle);
+            }
+        }
+
+        public ulong Size { get; }
+
+        public string GetRelativePath(string filePath)
+        {
+            if (filePath == null)
+                return null;
+
+            foreach (var img in Images)
+            {
+                var path = img.ApplyingPath;
+                if (path != null && filePath.StartsWith(path, StringComparison.OrdinalIgnoreCase))
+                    return filePath.Substring(path.Length);
+            }
+            return filePath;
+        }
+
+        private static WIM_MSG_RETURN MessageCallback(WIM_MSG dwMessageId, IntPtr wParam, IntPtr lParam, IntPtr pvUserData)
+        {
+            var ret = WIM_MSG_RETURN.WIM_MSG_SUCCESS;
+            if (_sinks.TryGetValue(pvUserData, out var file))
+            {
+                var handler = file.Event;
+                if (handler != null)
+                {
+                    WimFileEventArgs e;
+                    switch (dwMessageId)
+                    {
+                        case WIM_MSG.WIM_MSG_PROCESS:
+                            e = new WimFileProcessEventArgs(file, dwMessageId, wParam, lParam);
+                            break;
+
+                        case WIM_MSG.WIM_MSG_ERROR:
+                            e = new WimFileErrorEventArgs(file, dwMessageId, wParam, lParam);
+                            break;
+
+                        default:
+                            e = new WimFileEventArgs(dwMessageId, wParam, lParam);
+                            break;
+                    }
+
+                    if (Debugger.IsAttached)
+                    {
+                        handler(file, e);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            handler(file, e);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.WriteLine("An error occurred in the Event handler: " + exception);
+                        }
+                    }
+
+                    ret = e.ReturnValue;
+                }
+            }
+            return ret;
         }
 
         /// <summary>
@@ -101,94 +165,11 @@ namespace VIM2VHD
                 if (imageName == null)
                     throw new ArgumentNullException(nameof(imageName));
 
-                return Images.Where(i => i.ImageName.ToUpper() == imageName.ToUpper() || i.ImageFlags.ToUpper() == imageName.ToUpper()).FirstOrDefault();
+                return Images.Where(i => i.Name.ToUpper() == imageName.ToUpper() || i.Flags.ToUpper() == imageName.ToUpper()).FirstOrDefault();
             }
         }
 
-        /// <summary>
-        /// Returns an XDocument representation of the XML metadata for the WIM container and associated images.
-        /// </summary>
-        private XDocument XmlInfo
-        {
-            get
-            {
-                if (_xmlInfo == null)
-                {
-                    if (!NativeMethods.WIMGetImageInformation(CheckDisposed(), out StringBuilder builder, out int bytes))
-                        throw new Win32Exception(Marshal.GetLastWin32Error());
-
-                    // Ensure the length of the returned bytes to avoid garbage characters at the end.
-                    int charCount = bytes / sizeof(char);
-                    if (null != builder)
-                    {
-                        // Get rid of the unicode file marker at the beginning of the XML.
-                        builder.Remove(0, 1);
-                        builder.EnsureCapacity(charCount - 1);
-                        builder.Length = charCount - 1;
-
-                        // This isn't likely to change while we have the image open, so cache it.
-                        _xmlInfo = XDocument.Parse(builder.ToString().Trim());
-                    }
-                    else
-                    {
-                        _xmlInfo = null;
-                    }
-                }
-
-                return _xmlInfo;
-            }
-        }
-
-        ///<summary>
-        ///Event callback to the Wimgapi events
-        ///</summary>
-        private int ImageEventMessagePump(int MessageId, IntPtr wParam, IntPtr lParam, IntPtr UserData)
-        {
-            int status = (int)WimMessage.WIM_MSG_SUCCESS;
-            var eventArgs = new DefaultImageEventArgs(wParam, lParam, UserData);
-            switch ((ImageEventMessage)MessageId)
-            {
-                case ImageEventMessage.Progress:
-                    ProgressEvent(this, eventArgs);
-                    break;
-
-                case ImageEventMessage.Process:
-                    if (ProcessFileEvent != null)
-                    {
-                        string fileToImage = Marshal.PtrToStringUni(wParam);
-                        var fileToProcess = new ProcessFileEventArgs(fileToImage, lParam);
-                        ProcessFileEvent(this, fileToProcess);
-
-                        if (fileToProcess.Abort == true)
-                        {
-                            status = (int)ImageEventMessage.Abort;
-                        }
-                    }
-                    break;
-
-                case ImageEventMessage.Error:
-                    ErrorEvent?.Invoke(this, eventArgs);
-                    break;
-
-                case ImageEventMessage.SetRange:
-                    SetRangeEvent?.Invoke(this, eventArgs);
-                    break;
-
-                case ImageEventMessage.SetPos:
-                    SetPosEvent?.Invoke(this, eventArgs);
-                    break;
-
-                case ImageEventMessage.StepIt:
-                    StepItEvent?.Invoke(this, eventArgs);
-                    break;
-
-                default:
-                    break;
-            }
-            return status;
-        }
-
-        private IntPtr CheckDisposed()
+        internal IntPtr CheckDisposed()
         {
             var handle = _handle;
             if (handle == null)
@@ -213,6 +194,10 @@ namespace VIM2VHD
             var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
             if (handle != IntPtr.Zero)
             {
+                if (_sinks.TryRemove(handle, out var file))
+                {
+                    NativeMethods.WIMUnregisterMessageCallback(handle, _messageCallback);
+                }
                 NativeMethods.WIMCloseHandle(handle);
             }
         }
@@ -232,7 +217,6 @@ namespace VIM2VHD
                     _imageList = new List<WimImage>(count);
                     for (int i = 0; i < count; i++)
                     {
-                        // Load up each image so it's ready for us.
                         _imageList.Add(new WimImage(this, i + 1));
                     }
                 }
@@ -240,68 +224,23 @@ namespace VIM2VHD
             }
         }
 
-        private enum ImageEventMessage
+        public static void RegisterLogfile(string path)
         {
-            ///<summary>
-            ///Enables the caller to prevent a file or a directory from being captured or applied.
-            ///</summary>
-            Progress = WimMessage.WIM_MSG_PROGRESS,
+            if (path == null)
+                throw new ArgumentNullException(nameof(path));
 
-            ///<summary>
-            ///Notification sent to enable the caller to prevent a file or a directory from being captured or applied.
-            ///To prevent a file or a directory from being captured or applied, call WindowsImageContainer.SkipFile().
-            ///</summary>
-            Process = WimMessage.WIM_MSG_PROCESS,
+            Extensions.FileCreateDirectory(path);
+            if (!NativeMethods.WIMRegisterLogFile(path, 0))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
 
-            ///<summary>
-            ///Enables the caller to prevent a file resource from being compressed during a capture.
-            ///</summary>
-            Compress = WimMessage.WIM_MSG_COMPRESS,
+        public static void UnregisterLogfile(string path)
+        {
+            if (path == null)
+                throw new ArgumentNullException(nameof(path));
 
-            ///<summary>
-            ///Alerts the caller that an error has occurred while capturing or applying an image.
-            ///</summary>
-            Error = WimMessage.WIM_MSG_ERROR,
-
-            ///<summary>
-            ///Enables the caller to align a file resource on a particular alignment boundary.
-            ///</summary>
-            Alignment = WimMessage.WIM_MSG_ALIGNMENT,
-
-            ///<summary>
-            ///Enables the caller to align a file resource on a particular alignment boundary.
-            ///</summary>
-            Split = WimMessage.WIM_MSG_SPLIT,
-
-            ///<summary>
-            ///Indicates that volume information is being gathered during an image capture.
-            ///</summary>
-            Scanning = WimMessage.WIM_MSG_SCANNING,
-
-            ///<summary>
-            ///Indicates the number of files that will be captured or applied.
-            ///</summary>
-            SetRange = WimMessage.WIM_MSG_SETRANGE,
-
-            ///<summary>
-            ///Indicates the number of files that have been captured or applied.
-            /// </summary>
-            SetPos = WimMessage.WIM_MSG_SETPOS,
-
-            ///<summary>
-            ///Indicates that a file has been either captured or applied.
-            ///</summary>
-            StepIt = WimMessage.WIM_MSG_STEPIT,
-
-            ///<summary>
-            ///Success.
-            ///</summary>
-            Success = WimMessage.WIM_MSG_SUCCESS,
-
-            ///<summary>
-            ///Abort.
-            ///</summary>
-            Abort = WimMessage.WIM_MSG_ABORT_IMAGE
+            if (!NativeMethods.WIMUnregisterLogFile(path))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
         }
     }
 }

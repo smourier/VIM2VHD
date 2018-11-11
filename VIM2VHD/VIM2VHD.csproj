@@ -43,7 +43,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Architectures.cs" />
+    <Compile Include="Architecture.cs" />
     <Compile Include="ATTACH_VIRTUAL_DISK_FLAG.cs" />
     <Compile Include="ATTACH_VIRTUAL_DISK_PARAMETERS.cs" />
     <Compile Include="ATTACH_VIRTUAL_DISK_VERSION.cs" />
@@ -53,13 +53,15 @@
     <Compile Include="CREATE_VIRTUAL_DISK_FLAG.cs" />
     <Compile Include="CREATE_VIRTUAL_DISK_PARAMETERS.cs" />
     <Compile Include="CREATE_VIRTUAL_DISK_VERSION.cs" />
-    <Compile Include="DefaultImageEventArgs.cs" />
+    <Compile Include="WimFileEventArgs.cs" />
     <Compile Include="DETACH_VIRTUAL_DISK_FLAG.cs" />
+    <Compile Include="Extensions.cs" />
     <Compile Include="NativeMethods.cs" />
     <Compile Include="OPEN_VIRTUAL_DISK_FLAG.cs" />
     <Compile Include="OPEN_VIRTUAL_DISK_PARAMETERS.cs" />
     <Compile Include="OPEN_VIRTUAL_DISK_VERSION.cs" />
-    <Compile Include="ProcessFileEventArgs.cs" />
+    <Compile Include="WimFileErrorEventArgs.cs" />
+    <Compile Include="WimFileProcessEventArgs.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="VIRTUAL_DISK_ACCESS_MASK.cs" />
     <Compile Include="VIRTUAL_DISK_PROGRESS.cs" />
@@ -67,9 +69,12 @@
     <Compile Include="VIRTUAL_STORAGE_TYPE_DEVICE.cs" />
     <Compile Include="VIRTUAL_STORAGE_TYPE.cs" />
     <Compile Include="WimFile.cs" />
+    <Compile Include="WimFileOpenOptions.cs" />
     <Compile Include="WimImage.cs" />
-    <Compile Include="WimMessage.cs" />
-    <Compile Include="WimMessageCallback.cs" />
+    <Compile Include="WIM_COMPRESS.cs" />
+    <Compile Include="WIM_FLAG.cs" />
+    <Compile Include="WIM_MSG_RETURN.cs" />
+    <Compile Include="WIM_MSG.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
